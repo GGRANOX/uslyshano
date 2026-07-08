@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { MOODS } from "@/lib/moods";
 import type { Mood } from "@/lib/types";
 import type { Sticker } from "@/lib/types";
@@ -97,6 +98,19 @@ export function Composer({ onCreated }: ComposerProps) {
         </div>
 
         {error && <p className="mt-2 text-xs text-[#C1554A]">{error}</p>}
+
+        <p className="mt-2 text-[11px] text-[#8A8A92]">
+          Публикуя сообщение, вы подтверждаете, что вам есть 16 лет, и
+          соглашаетесь с{" "}
+          <Link href="/terms" className="underline hover:text-[#2A2A2E]">
+            Условиями использования
+          </Link>{" "}
+          и{" "}
+          <Link href="/privacy" className="underline hover:text-[#2A2A2E]">
+            Политикой конфиденциальности
+          </Link>
+          .
+        </p>
       </form>
     </div>
   );

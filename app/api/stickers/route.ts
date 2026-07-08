@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { moderateText } from "@/lib/moderation";
+import { checkBannedWords } from "@/lib/wordFilter";
+import { isRateLimited, POSTS_PER_HOUR_LIMIT } from "@/lib/rateLimit";
 import { pickStickerPosition } from "@/lib/layout";
 import { MOOD_MAP } from "@/lib/moods";
 import { SESSION_COOKIE, generateSessionId } from "@/lib/session";
@@ -33,21 +35,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Выберите настроение." }, { status: 400 });
   }
 
-  let moderation;
-  try {
-    moderation = await moderateText(text);
-  } catch (error) {
-    console.error("Moderation error", error);
-    return NextResponse.json(
-      { error: "Не удалось проверить сообщение модерацией. Попробуйте ещё раз." },
-      { status: 502 }
-    );
-  }
-
-  if (moderation.flagged) {
-    return NextResponse.json({ error: moderation.reason }, { status: 422 });
-  }
-
   const cookieStore = await cookies();
   let sessionId = cookieStore.get(SESSION_COOKIE)?.value;
   if (!sessionId) {
@@ -62,6 +49,35 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
+
+  if (await isRateLimited(supabase, sessionId)) {
+    return NextResponse.json(
+      {
+        error: `Слишком много сообщений подряд — не больше ${POSTS_PER_HOUR_LIMIT} в час. Попробуйте позже.`,
+      },
+      { status: 429 }
+    );
+  }
+
+  const wordFilterResult = checkBannedWords(text);
+  if (wordFilterResult.flagged) {
+    return NextResponse.json({ error: wordFilterResult.reason }, { status: 422 });
+  }
+
+  let moderation;
+  try {
+    moderation = await moderateText(text);
+  } catch (error) {
+    console.error("Moderation error", error);
+    return NextResponse.json(
+      { error: "Не удалось проверить сообщение модерацией. Попробуйте ещё раз." },
+      { status: 502 }
+    );
+  }
+
+  if (moderation.flagged) {
+    return NextResponse.json({ error: moderation.reason }, { status: 422 });
+  }
 
   const { data: existing, error: fetchError } = await supabase
     .from("stickers")

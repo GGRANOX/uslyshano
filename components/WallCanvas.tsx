@@ -7,6 +7,7 @@ import { Header } from "./Header";
 import { Composer } from "./Composer";
 import { StickerCard } from "./StickerCard";
 import type { Sticker, StickerWithLikedState } from "@/lib/types";
+import type { ReportReasonKey } from "@/lib/reportReasons";
 
 const VIRTUALIZATION_BUFFER = 500; // px над/под видимой областью
 
@@ -138,6 +139,31 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
     }
   }
 
+  async function handleReport(id: string, reason: ReportReasonKey) {
+    const response = await fetch(`/api/stickers/${id}/report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
+
+    if (!response.ok) {
+      throw new Error("report failed");
+    }
+
+    const data = await response.json();
+    // Если жалоба репортящего стала третьей — сразу убираем стикер из его
+    // собственной ленты. У остальных уже открытых вкладок карточка исчезнет
+    // при следующей загрузке страницы (RLS перестаёт отдавать скрытые записи).
+    if (data.isHidden) {
+      setStickers((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
+
   function handleCreated(sticker: Sticker) {
     setStickers((prev) => {
       const next = new Map(prev);
@@ -165,6 +191,7 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
               sticker={sticker}
               onLike={handleLike}
               likePending={pendingLikes.has(sticker.id)}
+              onReport={handleReport}
             />
           ))}
           {allStickers.length === 0 && (

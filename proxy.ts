@@ -1,7 +1,44 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, generateSessionId } from "@/lib/session";
 
+// Простая админ-панель, защищённая паролем (ТЗ раздел 6, Фаза 2). HTTP Basic
+// Auth достаточен для MVP — работает из коробки в браузере, не требует своей
+// формы логина/сессии. Безопасен только при HTTPS (Vercel даёт его по
+// умолчанию) — по HTTP заголовок Authorization ходит в открытом виде.
+function isAdminPath(pathname: string): boolean {
+  return pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
+}
+
+function isAuthorizedAdmin(request: NextRequest): boolean {
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password) return false; // не настроено — доступ закрыт по умолчанию
+
+  const header = request.headers.get("authorization");
+  if (!header?.startsWith("Basic ")) return false;
+
+  const decoded = atob(header.slice("Basic ".length));
+  const separatorIndex = decoded.indexOf(":");
+  const providedPassword = separatorIndex === -1 ? decoded : decoded.slice(separatorIndex + 1);
+
+  return providedPassword === password;
+}
+
+function requireAdminAuth(): NextResponse {
+  // Значения HTTP-заголовков ограничены ByteString (Latin1) — кириллица в
+  // WWW-Authenticate ломает Response на Edge Runtime, поэтому realm латиницей.
+  return new NextResponse("Требуется авторизация администратора.", {
+    status: 401,
+    headers: { "WWW-Authenticate": 'Basic realm="Stena Admin"' },
+  });
+}
+
 export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (isAdminPath(pathname) && !isAuthorizedAdmin(request)) {
+    return requireAdminAuth();
+  }
+
   const existing = request.cookies.get(SESSION_COOKIE)?.value;
   if (existing) {
     return NextResponse.next();

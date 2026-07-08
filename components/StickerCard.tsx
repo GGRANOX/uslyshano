@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MOOD_MAP } from "@/lib/moods";
 import type { StickerWithLikedState } from "@/lib/types";
 import { CARD_WIDTH } from "@/lib/layout";
+import { REPORT_REASONS, type ReportReasonKey } from "@/lib/reportReasons";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 const FADE_WINDOW_MS = DAY_MS; // последние 24 часа жизни — постепенное выцветание
@@ -12,10 +13,15 @@ interface StickerCardProps {
   sticker: StickerWithLikedState;
   onLike: (id: string) => void;
   likePending: boolean;
+  onReport: (id: string, reason: ReportReasonKey) => Promise<void>;
 }
 
-export function StickerCard({ sticker, onLike, likePending }: StickerCardProps) {
+export function StickerCard({ sticker, onLike, likePending, onReport }: StickerCardProps) {
   const [now, setNow] = useState(() => Date.now());
+  const [reportState, setReportState] = useState<"idle" | "picking" | "sending" | "sent">(
+    "idle"
+  );
+  const [reportReason, setReportReason] = useState<ReportReasonKey>(REPORT_REASONS[0].key);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 60_000);
@@ -48,6 +54,16 @@ export function StickerCard({ sticker, onLike, likePending }: StickerCardProps) 
       }
     }
     await navigator.clipboard.writeText(url).catch(() => {});
+  }
+
+  async function handleReportSubmit() {
+    setReportState("sending");
+    try {
+      await onReport(sticker.id, reportReason);
+      setReportState("sent");
+    } catch {
+      setReportState("picking");
+    }
   }
 
   return (
@@ -117,7 +133,47 @@ export function StickerCard({ sticker, onLike, likePending }: StickerCardProps) 
         >
           <span aria-hidden>↗</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setReportState(reportState === "idle" ? "picking" : "idle")}
+          disabled={reportState === "sent"}
+          className="ml-auto flex items-center gap-1 hover:text-[#C1554A] disabled:cursor-default disabled:opacity-40"
+          aria-label="Пожаловаться"
+          title="Пожаловаться"
+        >
+          <span aria-hidden>🚩</span>
+        </button>
       </div>
+
+      {reportState === "sent" && (
+        <p className="mt-2 text-[11px] text-[#8A8A92]">Жалоба отправлена</p>
+      )}
+
+      {(reportState === "picking" || reportState === "sending") && (
+        <div className="mt-2 flex items-center gap-2 rounded-xl bg-black/5 p-2">
+          <select
+            value={reportReason}
+            onChange={(e) => setReportReason(e.target.value as ReportReasonKey)}
+            disabled={reportState === "sending"}
+            className="flex-1 rounded-lg border-none bg-white/80 px-2 py-1 text-[11px] outline-none"
+          >
+            {REPORT_REASONS.map((r) => (
+              <option key={r.key} value={r.key}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={handleReportSubmit}
+            disabled={reportState === "sending"}
+            className="rounded-lg bg-[#C1554A] px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+          >
+            {reportState === "sending" ? "..." : "Отправить"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
