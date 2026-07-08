@@ -12,7 +12,7 @@ import type { Mood } from "@/lib/types";
 const MAX_LENGTH = 1000;
 
 export async function POST(request: Request) {
-  let body: { text?: unknown; mood?: unknown };
+  let body: { text?: unknown; mood?: unknown; decorationId?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -21,6 +21,7 @@ export async function POST(request: Request) {
 
   const text = typeof body.text === "string" ? body.text.trim() : "";
   const mood = typeof body.mood === "string" ? (body.mood as Mood) : null;
+  const decorationId = typeof body.decorationId === "string" ? body.decorationId : null;
 
   if (!text || text.length === 0) {
     return NextResponse.json({ error: "Сообщение не может быть пустым." }, { status: 400 });
@@ -57,6 +58,23 @@ export async function POST(request: Request) {
       },
       { status: 429 }
     );
+  }
+
+  if (decorationId) {
+    const { data: purchase } = await supabase
+      .from("purchases")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("decoration_id", decorationId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!purchase) {
+      return NextResponse.json(
+        { error: "Эта декорация не куплена для вашей сессии." },
+        { status: 403 }
+      );
+    }
   }
 
   const wordFilterResult = checkBannedWords(text);
@@ -102,6 +120,7 @@ export async function POST(request: Request) {
       position_y: position.position_y,
       rotation: position.rotation,
       session_id: sessionId,
+      decoration_id: decorationId,
     })
     .select()
     .single();

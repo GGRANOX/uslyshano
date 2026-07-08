@@ -6,10 +6,19 @@ import { computeCanvasHeight, CARD_HEIGHT } from "@/lib/layout";
 import { Header } from "./Header";
 import { Composer } from "./Composer";
 import { StickerCard } from "./StickerCard";
+import { DecorationShopModal } from "./DecorationShopModal";
+import { SupportModal } from "./SupportModal";
 import type { Sticker, StickerWithLikedState } from "@/lib/types";
 import type { ReportReasonKey } from "@/lib/reportReasons";
+import type { DecorationStyleKey } from "@/lib/decorations";
 
 const VIRTUALIZATION_BUFFER = 500; // px над/под видимой областью
+
+// Спонсорские стикеры — не больше 1 на каждые ~15 обычных в видимой области
+// (ТЗ раздел 6, Фаза 3). Ограничение применяется здесь, при рендере, а не при
+// создании — так плотность остаётся верной, даже если несколько спонсорских
+// стикеров случайно оказались в одной области холста.
+const SPONSORED_RATIO = 15;
 
 interface WallCanvasProps {
   initialStickers: StickerWithLikedState[];
@@ -22,7 +31,24 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
   const [pendingLikes, setPendingLikes] = useState<Set<string>>(new Set());
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
+  const [decorationStyles, setDecorationStyles] = useState<Map<string, DecorationStyleKey>>(
+    new Map()
+  );
+  const [shopOpen, setShopOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Карта decoration_id -> style_key для отрисовки купленных оформлений на
+  // чужих стикерах, приходящих через Realtime (там нет джойна с decorations).
+  useEffect(() => {
+    fetch("/api/decorations")
+      .then((r) => r.json())
+      .then((data) => {
+        const entries = (data.decorations ?? []) as { id: string; styleKey: DecorationStyleKey }[];
+        setDecorationStyles(new Map(entries.map((d) => [d.id, d.styleKey])));
+      })
+      .catch(() => {});
+  }, []);
 
   // Realtime: подписка на изменения таблицы stickers (ТЗ раздел 6, Фаза 1 —
   // "появляется на холсте почти в реальном времени"). RLS ограничивает поток
@@ -97,12 +123,23 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
   const canvasHeight = useMemo(() => computeCanvasHeight(allStickers), [allStickers]);
 
   const visibleStickers = useMemo(() => {
-    if (viewportHeight === 0) return allStickers; // до первого измерения — рендерим всё
-    const top = scrollTop - VIRTUALIZATION_BUFFER;
-    const bottom = scrollTop + viewportHeight + VIRTUALIZATION_BUFFER;
-    return allStickers.filter(
-      (s) => s.position_y + CARD_HEIGHT >= top && s.position_y <= bottom
-    );
+    const inViewport =
+      viewportHeight === 0
+        ? allStickers // до первого измерения — рендерим всё
+        : allStickers.filter((s) => {
+            const top = scrollTop - VIRTUALIZATION_BUFFER;
+            const bottom = scrollTop + viewportHeight + VIRTUALIZATION_BUFFER;
+            return s.position_y + CARD_HEIGHT >= top && s.position_y <= bottom;
+          });
+
+    const regular = inViewport.filter((s) => !s.is_sponsored);
+    const sponsored = inViewport.filter((s) => s.is_sponsored);
+    const sponsoredLimit = Math.max(1, Math.floor(regular.length / SPONSORED_RATIO));
+
+    if (sponsored.length <= sponsoredLimit) {
+      return inViewport;
+    }
+    return [...regular, ...sponsored.slice(0, sponsoredLimit)];
   }, [allStickers, scrollTop, viewportHeight]);
 
   async function handleLike(id: string) {
@@ -177,7 +214,11 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
 
   return (
     <div className="relative flex flex-1 flex-col">
-      <Header count={allStickers.length} />
+      <Header
+        count={allStickers.length}
+        onOpenShop={() => setShopOpen(true)}
+        onOpenSupport={() => setSupportOpen(true)}
+      />
 
       <div
         ref={containerRef}
@@ -192,6 +233,9 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
               onLike={handleLike}
               likePending={pendingLikes.has(sticker.id)}
               onReport={handleReport}
+              decorationStyleKey={
+                sticker.decoration_id ? decorationStyles.get(sticker.decoration_id) ?? null : null
+              }
             />
           ))}
           {allStickers.length === 0 && (
@@ -203,6 +247,9 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
       </div>
 
       <Composer onCreated={handleCreated} />
+
+      <DecorationShopModal open={shopOpen} onClose={() => setShopOpen(false)} />
+      <SupportModal open={supportOpen} onClose={() => setSupportOpen(false)} />
     </div>
   );
 }

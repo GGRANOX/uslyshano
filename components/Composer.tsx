@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { MOODS } from "@/lib/moods";
 import type { Mood } from "@/lib/types";
 import type { Sticker } from "@/lib/types";
+import type { DecorationInfo } from "@/lib/decorations";
 
 const MAX_LENGTH = 1000;
 
@@ -15,8 +16,22 @@ interface ComposerProps {
 export function Composer({ onCreated }: ComposerProps) {
   const [text, setText] = useState("");
   const [mood, setMood] = useState<Mood>(MOODS[0].key);
+  const [decorationId, setDecorationId] = useState<string>("");
+  const [ownedDecorations, setOwnedDecorations] = useState<DecorationInfo[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Декорации доступны в композере, только если сессия уже что-то купила
+  // (подтверждено администратором) — см. магазин декораций (кнопка 🎨).
+  useEffect(() => {
+    fetch("/api/decorations")
+      .then((r) => r.json())
+      .then((data) => {
+        const owned = ((data.decorations ?? []) as DecorationInfo[]).filter((d) => d.owned);
+        setOwnedDecorations(owned);
+      })
+      .catch(() => {});
+  }, []);
 
   const trimmedLength = text.trim().length;
   const canSubmit = trimmedLength > 0 && trimmedLength <= MAX_LENGTH && !submitting;
@@ -32,7 +47,11 @@ export function Composer({ onCreated }: ComposerProps) {
       const response = await fetch("/api/stickers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.trim(), mood }),
+        body: JSON.stringify({
+          text: text.trim(),
+          mood,
+          decorationId: decorationId || null,
+        }),
       });
 
       const data = await response.json();
@@ -78,6 +97,21 @@ export function Composer({ onCreated }: ComposerProps) {
                 </option>
               ))}
             </select>
+
+            {ownedDecorations.length > 0 && (
+              <select
+                value={decorationId}
+                onChange={(e) => setDecorationId(e.target.value)}
+                className="rounded-full bg-[#F1F0F5] px-3 py-1.5 text-sm outline-none"
+              >
+                <option value="">Без оформления</option>
+                {ownedDecorations.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <span
               className={`text-xs ${

@@ -5,6 +5,7 @@ import { MOOD_MAP } from "@/lib/moods";
 import type { StickerWithLikedState } from "@/lib/types";
 import { CARD_WIDTH } from "@/lib/layout";
 import { REPORT_REASONS, type ReportReasonKey } from "@/lib/reportReasons";
+import { getDecorationVisual, type DecorationStyleKey } from "@/lib/decorations";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 const FADE_WINDOW_MS = DAY_MS; // последние 24 часа жизни — постепенное выцветание
@@ -14,9 +15,16 @@ interface StickerCardProps {
   onLike: (id: string) => void;
   likePending: boolean;
   onReport: (id: string, reason: ReportReasonKey) => Promise<void>;
+  decorationStyleKey: DecorationStyleKey | null;
 }
 
-export function StickerCard({ sticker, onLike, likePending, onReport }: StickerCardProps) {
+export function StickerCard({
+  sticker,
+  onLike,
+  likePending,
+  onReport,
+  decorationStyleKey,
+}: StickerCardProps) {
   const [now, setNow] = useState(() => Date.now());
   const [reportState, setReportState] = useState<"idle" | "picking" | "sending" | "sent">(
     "idle"
@@ -66,6 +74,8 @@ export function StickerCard({ sticker, onLike, likePending, onReport }: StickerC
     }
   }
 
+  const decorationVisual = getDecorationVisual(decorationStyleKey);
+
   return (
     <div
       id={`sticker-${sticker.id}`}
@@ -79,8 +89,20 @@ export function StickerCard({ sticker, onLike, likePending, onReport }: StickerC
         backgroundColor: sticker.is_sponsored ? "#FDFCFA" : mood.cardBg,
         transform: `rotate(${sticker.rotation}deg)`,
         opacity,
+        ...decorationVisual.style,
       }}
     >
+      {decorationVisual.cornerStars && (
+        <>
+          <span className="absolute -top-2 -left-2 text-sm" aria-hidden>
+            ✨
+          </span>
+          <span className="absolute -bottom-2 -right-2 text-sm" aria-hidden>
+            ✨
+          </span>
+        </>
+      )}
+
       {sticker.is_sponsored && (
         <span className="mb-1 inline-block rounded-full bg-[#2A2A2E] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
           Реклама

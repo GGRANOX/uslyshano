@@ -1,5 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ModerationQueueItem } from "@/components/admin/ModerationQueueItem";
+import { PurchaseConfirmForm } from "@/components/admin/PurchaseConfirmForm";
+import { SponsoredStickerForm } from "@/components/admin/SponsoredStickerForm";
 import type { Sticker } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +9,10 @@ export const dynamic = "force-dynamic";
 // Доступ защищён HTTP Basic Auth в proxy.ts — сюда не попадёт никто без
 // пароля ADMIN_PASSWORD (ТЗ раздел 6, Фаза 2: "простая админ-панель...
 // для просмотра и удаления жалоб/нарушений").
+//
+// Модерация и монетизация — независимые секции: сбой загрузки очереди жалоб
+// не должен блокировать формы подтверждения покупок/спонсорских стикеров,
+// поэтому ошибка обрабатывается локально, без раннего return для всей страницы.
 export default async function AdminPage() {
   const supabase = createAdminClient();
 
@@ -17,14 +23,6 @@ export default async function AdminPage() {
     .order("report_count", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(200);
-
-  if (error) {
-    return (
-      <div className="mx-auto max-w-3xl p-6 text-sm text-[#C1554A]">
-        Ошибка загрузки очереди модерации: {error.message}
-      </div>
-    );
-  }
 
   const stickerList: Sticker[] = stickers ?? [];
   const stickerIds = stickerList.map((s) => s.id);
@@ -52,7 +50,12 @@ export default async function AdminPage() {
       </p>
 
       <div className="mt-6 flex flex-col gap-4">
-        {stickerList.length === 0 && (
+        {error && (
+          <p className="text-sm text-[#C1554A]">
+            Ошибка загрузки очереди модерации: {error.message}
+          </p>
+        )}
+        {!error && stickerList.length === 0 && (
           <p className="text-sm text-[#8A8A92]">Очередь пуста — жалоб нет.</p>
         )}
         {stickerList.map((sticker) => (
@@ -62,6 +65,12 @@ export default async function AdminPage() {
             reports={reportsBySticker.get(sticker.id) ?? []}
           />
         ))}
+      </div>
+
+      <h1 className="mt-10 text-2xl font-extrabold text-[#2A2A2E]">Монетизация</h1>
+      <div className="mt-4 flex flex-col gap-4">
+        <PurchaseConfirmForm />
+        <SponsoredStickerForm />
       </div>
     </div>
   );
