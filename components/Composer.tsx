@@ -3,23 +3,24 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { MOODS } from "@/lib/moods";
-import type { Mood } from "@/lib/types";
-import type { Sticker } from "@/lib/types";
+import type { Mood, PublicSticker } from "@/lib/types";
 import type { DecorationInfo } from "@/lib/decorations";
 
 const MAX_LENGTH = 1000;
 
 interface ComposerProps {
-  onCreated: (sticker: Sticker) => void;
+  onCreated: (sticker: PublicSticker) => void;
 }
 
 export function Composer({ onCreated }: ComposerProps) {
   const [text, setText] = useState("");
   const [mood, setMood] = useState<Mood>(MOODS[0].key);
   const [decorationId, setDecorationId] = useState<string>("");
+  const [allowFeature, setAllowFeature] = useState(false);
   const [ownedDecorations, setOwnedDecorations] = useState<DecorationInfo[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Декорации доступны в композере, только если сессия уже что-то купила
   // (подтверждено администратором) — см. магазин декораций (кнопка 🎨).
@@ -33,6 +34,13 @@ export function Composer({ onCreated }: ComposerProps) {
       .catch(() => {});
   }, []);
 
+  // Сообщение "Готово..." само пропадает через несколько секунд.
+  useEffect(() => {
+    if (!successMessage) return;
+    const timeout = setTimeout(() => setSuccessMessage(null), 6000);
+    return () => clearTimeout(timeout);
+  }, [successMessage]);
+
   const trimmedLength = text.trim().length;
   const canSubmit = trimmedLength > 0 && trimmedLength <= MAX_LENGTH && !submitting;
 
@@ -42,6 +50,7 @@ export function Composer({ onCreated }: ComposerProps) {
 
     setSubmitting(true);
     setError(null);
+    setSuccessMessage(null);
 
     try {
       const response = await fetch("/api/stickers", {
@@ -51,6 +60,7 @@ export function Composer({ onCreated }: ComposerProps) {
           text: text.trim(),
           mood,
           decorationId: decorationId || null,
+          allowFeature,
         }),
       });
 
@@ -61,8 +71,12 @@ export function Composer({ onCreated }: ComposerProps) {
         return;
       }
 
-      onCreated(data.sticker as Sticker);
+      onCreated(data.sticker as PublicSticker);
       setText("");
+      setAllowFeature(false);
+      setSuccessMessage(
+        "Готово. Через неделю это исчезнет — а пока кто-то, возможно, это прочитает."
+      );
     } catch {
       setError("Проблема с сетью. Попробуйте ещё раз.");
     } finally {
@@ -85,7 +99,7 @@ export function Composer({ onCreated }: ComposerProps) {
         />
 
         <div className="mt-2 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <select
               value={mood}
               onChange={(e) => setMood(e.target.value as Mood)}
@@ -131,7 +145,20 @@ export function Composer({ onCreated }: ComposerProps) {
           </button>
         </div>
 
+        <label className="mt-2 flex items-center gap-2 text-[11px] text-[#8A8A92]">
+          <input
+            type="checkbox"
+            checked={allowFeature}
+            onChange={(e) => setAllowFeature(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-black/20"
+          />
+          Можно использовать в подборке лучших постов
+        </label>
+
         {error && <p className="mt-2 text-xs text-[#C1554A]">{error}</p>}
+        {successMessage && !error && (
+          <p className="mt-2 text-xs text-[#1f7a3f]">{successMessage}</p>
+        )}
 
         <p className="mt-2 text-[11px] text-[#8A8A92]">
           Публикуя сообщение, вы подтверждаете, что вам есть 16 лет, и
@@ -142,6 +169,9 @@ export function Composer({ onCreated }: ComposerProps) {
           и{" "}
           <Link href="/privacy" className="underline hover:text-[#2A2A2E]">
             Политикой конфиденциальности
+          </Link>
+          . <Link href="/about" className="underline hover:text-[#2A2A2E]">
+            О проекте
           </Link>
           .
         </p>

@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Политика конфиденциальности — Стена",
+  title: "Политика конфиденциальности — Услышано",
 };
 
 export default function PrivacyPage() {

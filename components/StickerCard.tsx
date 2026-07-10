@@ -16,6 +16,12 @@ interface StickerCardProps {
   likePending: boolean;
   onReport: (id: string, reason: ReportReasonKey) => Promise<void>;
   decorationStyleKey: DecorationStyleKey | null;
+  /** 'wall' (по умолчанию) — абсолютное позиционирование на холсте.
+   * 'standalone' — обычный блок по центру родителя (см. RandomStickerModal). */
+  variant?: "wall" | "standalone";
+  /** Переопределяет поведение кнопки "Поделиться" (используется для
+   * генерации картинки в "Рандомном листе" вместо копирования ссылки). */
+  onShareOverride?: () => void;
 }
 
 export function StickerCard({
@@ -24,6 +30,8 @@ export function StickerCard({
   likePending,
   onReport,
   decorationStyleKey,
+  variant = "wall",
+  onShareOverride,
 }: StickerCardProps) {
   const [now, setNow] = useState(() => Date.now());
   const [reportState, setReportState] = useState<"idle" | "picking" | "sending" | "sent">(
@@ -52,6 +60,10 @@ export function StickerCard({
   }).format(new Date(sticker.created_at));
 
   async function handleShare() {
+    if (onShareOverride) {
+      onShareOverride();
+      return;
+    }
     const url = `${window.location.origin}/#sticker-${sticker.id}`;
     if (navigator.share) {
       try {
@@ -75,17 +87,20 @@ export function StickerCard({
   }
 
   const decorationVisual = getDecorationVisual(decorationStyleKey);
+  const isWall = variant === "wall";
 
   return (
     <div
       id={`sticker-${sticker.id}`}
-      className={`absolute rounded-2xl p-4 shadow-md shadow-black/5 transition-opacity duration-700 ${
-        isFading ? "sticker-corner-fold" : ""
-      } ${sticker.is_sponsored ? "ring-2 ring-[#E3A93B]" : ""}`}
+      className={`rounded-2xl p-4 shadow-md shadow-black/5 transition-opacity duration-700 ${
+        isWall ? "absolute" : "relative mx-auto w-full max-w-sm"
+      } ${isFading ? "sticker-corner-fold" : ""} ${
+        sticker.is_sponsored ? "ring-2 ring-[#E3A93B]" : ""
+      }`}
       style={{
-        left: `${sticker.position_x}%`,
-        top: sticker.position_y,
-        width: CARD_WIDTH,
+        left: isWall ? `${sticker.position_x}%` : undefined,
+        top: isWall ? sticker.position_y : undefined,
+        width: isWall ? CARD_WIDTH : undefined,
         backgroundColor: sticker.is_sponsored ? "#FDFCFA" : mood.cardBg,
         transform: `rotate(${sticker.rotation}deg)`,
         opacity,
@@ -129,18 +144,24 @@ export function StickerCard({
           : "исчезает сегодня"}
       </span>
 
+      {sticker.is_own && sticker.has_reactions && (
+        <p className="mt-2 text-[11px] font-medium text-[#C96E8D]">
+          🫂 тебя услышали
+        </p>
+      )}
+
       <div className="mt-3 flex items-center gap-4 text-sm text-[#6B6B72]">
         <button
           type="button"
           onClick={() => onLike(sticker.id)}
           disabled={likePending || sticker.liked_by_me}
           className={`flex items-center gap-1 transition-colors disabled:cursor-default ${
-            sticker.liked_by_me ? "text-[#C1554A]" : "hover:text-[#C1554A]"
+            sticker.liked_by_me ? "text-[#C96E8D]" : "hover:text-[#C96E8D]"
           }`}
           aria-pressed={sticker.liked_by_me}
         >
-          <span aria-hidden>{sticker.liked_by_me ? "❤" : "🤍"}</span>
-          <span>{sticker.likes_count}</span>
+          <span aria-hidden>🫂</span>
+          <span>Услышал(а)</span>
         </button>
 
         <span className="flex items-center gap-1 opacity-50" title="Комментарии скоро">

@@ -38,8 +38,10 @@ export async function POST(
 
   const result = data as { likes_count: number; already_liked: boolean };
 
+  // likes_count намеренно не уходит в ответ — реакция "Услышал(а)" публично
+  // без счётчика (changelog "Услышано" п.2). Автор узнаёт о реакциях через
+  // has_reactions на своём же стикере (см. lib/publicSticker.ts), не отсюда.
   return NextResponse.json({
-    likesCount: result.likes_count,
     alreadyLiked: result.already_liked,
   });
 }

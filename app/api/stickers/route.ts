@@ -7,12 +7,18 @@ import { isRateLimited, POSTS_PER_HOUR_LIMIT } from "@/lib/rateLimit";
 import { pickStickerPosition } from "@/lib/layout";
 import { MOOD_MAP } from "@/lib/moods";
 import { SESSION_COOKIE, generateSessionId } from "@/lib/session";
+import { toPublicSticker } from "@/lib/publicSticker";
 import type { Mood } from "@/lib/types";
 
 const MAX_LENGTH = 1000;
 
 export async function POST(request: Request) {
-  let body: { text?: unknown; mood?: unknown; decorationId?: unknown };
+  let body: {
+    text?: unknown;
+    mood?: unknown;
+    decorationId?: unknown;
+    allowFeature?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -22,6 +28,7 @@ export async function POST(request: Request) {
   const text = typeof body.text === "string" ? body.text.trim() : "";
   const mood = typeof body.mood === "string" ? (body.mood as Mood) : null;
   const decorationId = typeof body.decorationId === "string" ? body.decorationId : null;
+  const allowFeature = body.allowFeature === true;
 
   if (!text || text.length === 0) {
     return NextResponse.json({ error: "Сообщение не может быть пустым." }, { status: 400 });
@@ -121,6 +128,7 @@ export async function POST(request: Request) {
       rotation: position.rotation,
       session_id: sessionId,
       decoration_id: decorationId,
+      allow_feature: allowFeature,
     })
     .select()
     .single();
@@ -130,5 +138,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Не удалось создать стикер." }, { status: 500 });
   }
 
-  return NextResponse.json({ sticker }, { status: 201 });
+  // Строка из insert().select() — полная (с session_id), в браузер уходит
+  // только санитизированная версия (см. lib/publicSticker.ts).
+  return NextResponse.json(
+    { sticker: toPublicSticker(sticker, sessionId) },
+    { status: 201 }
+  );
 }

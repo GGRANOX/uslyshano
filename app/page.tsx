@@ -3,6 +3,7 @@ import { createPublicClient } from "@/lib/supabase/public";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SESSION_COOKIE } from "@/lib/session";
 import { WallCanvas } from "@/components/WallCanvas";
+import { toPublicSticker } from "@/lib/publicSticker";
 import type { Sticker, StickerWithLikedState } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ export default async function Home() {
 
   const stickersWithLikedState: StickerWithLikedState[] = (stickers ?? []).map(
     (sticker: Sticker) => ({
-      ...sticker,
+      ...toPublicSticker(sticker, sessionId),
       liked_by_me: likedIds.has(sticker.id),
     })
   );

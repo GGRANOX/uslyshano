@@ -8,7 +8,10 @@ import { Composer } from "./Composer";
 import { StickerCard } from "./StickerCard";
 import { DecorationShopModal } from "./DecorationShopModal";
 import { SupportModal } from "./SupportModal";
-import type { Sticker, StickerWithLikedState } from "@/lib/types";
+import { RandomStickerModal } from "./RandomStickerModal";
+import { OnboardingModal } from "./OnboardingModal";
+import { toPublicSticker } from "@/lib/publicSticker";
+import type { PublicSticker, Sticker, StickerWithLikedState } from "@/lib/types";
 import type { ReportReasonKey } from "@/lib/reportReasons";
 import type { DecorationStyleKey } from "@/lib/decorations";
 
@@ -36,16 +39,30 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
   );
   const [shopOpen, setShopOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
+  const [randomOpen, setRandomOpen] = useState(false);
+  const [mySessionId, setMySessionId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Realtime-подписка ниже монтируется один раз ([]) — читает актуальный
+  // sessionId через ref, а не через замыкание над устаревшим state.
+  const mySessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    mySessionIdRef.current = mySessionId;
+  }, [mySessionId]);
 
   // Карта decoration_id -> style_key для отрисовки купленных оформлений на
   // чужих стикерах, приходящих через Realtime (там нет джойна с decorations).
+  // Заодно узнаём свой собственный session_id — он нужен ТОЛЬКО для того,
+  // чтобы на клиенте отличить "это мой стикер" у данных, прилетающих через
+  // Realtime (см. обработчики ниже) — сырой session_id чужих стикеров при
+  // этом никогда не сохраняется в состоянии React (toPublicSticker его
+  // отбрасывает сразу после сравнения).
   useEffect(() => {
     fetch("/api/decorations")
       .then((r) => r.json())
       .then((data) => {
         const entries = (data.decorations ?? []) as { id: string; styleKey: DecorationStyleKey }[];
         setDecorationStyles(new Map(entries.map((d) => [d.id, d.styleKey])));
+        setMySessionId(data.sessionId ?? null);
       })
       .catch(() => {});
   }, []);
@@ -61,7 +78,10 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "stickers" },
         (payload) => {
-          const incoming = payload.new as Sticker;
+          // payload.new — сырая строка из БД (с session_id и реальным
+          // likes_count). toPublicSticker сразу же их отбрасывает — в
+          // состояние React попадает только санитизированная версия.
+          const incoming = toPublicSticker(payload.new as Sticker, mySessionIdRef.current);
           setStickers((prev) => {
             if (prev.has(incoming.id)) return prev;
             const next = new Map(prev);
@@ -74,7 +94,7 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "stickers" },
         (payload) => {
-          const incoming = payload.new as Sticker;
+          const incoming = toPublicSticker(payload.new as Sticker, mySessionIdRef.current);
           setStickers((prev) => {
             const existing = prev.get(incoming.id);
             const next = new Map(prev);
@@ -146,24 +166,31 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
     if (pendingLikes.has(id)) return;
 
     setPendingLikes((prev) => new Set(prev).add(id));
-    // Оптимистичное обновление — сразу подсвечиваем лайк
+    // Оптимистичное обновление — сразу подсвечиваем реакцию. Число лайков
+    // нигде не показывается (changelog "Услышано" п.2), поэтому обновлять
+    // тут нечего, кроме liked_by_me и — на всякий случай самореакции на
+    // собственный стикер — has_reactions.
     setStickers((prev) => {
       const existing = prev.get(id);
       if (!existing || existing.liked_by_me) return prev;
       const next = new Map(prev);
-      next.set(id, { ...existing, liked_by_me: true, likes_count: existing.likes_count + 1 });
+      next.set(id, {
+        ...existing,
+        liked_by_me: true,
+        has_reactions: existing.is_own ? true : existing.has_reactions,
+      });
       return next;
     });
 
     try {
       const response = await fetch(`/api/stickers/${id}/like`, { method: "POST" });
-      const data = await response.json();
-      if (response.ok) {
+      if (!response.ok) {
+        // не удалось — откатываем оптимистичное обновление
         setStickers((prev) => {
           const existing = prev.get(id);
           if (!existing) return prev;
           const next = new Map(prev);
-          next.set(id, { ...existing, likes_count: data.likesCount, liked_by_me: true });
+          next.set(id, { ...existing, liked_by_me: false });
           return next;
         });
       }
@@ -201,7 +228,7 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
     }
   }
 
-  function handleCreated(sticker: Sticker) {
+  function handleCreated(sticker: PublicSticker) {
     setStickers((prev) => {
       const next = new Map(prev);
       next.set(sticker.id, { ...sticker, liked_by_me: false });
@@ -218,6 +245,7 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
         count={allStickers.length}
         onOpenShop={() => setShopOpen(true)}
         onOpenSupport={() => setSupportOpen(true)}
+        onOpenRandom={() => setRandomOpen(true)}
       />
 
       <div
@@ -240,7 +268,7 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
           ))}
           {allStickers.length === 0 && (
             <p className="absolute left-1/2 top-16 -translate-x-1/2 text-center text-sm text-[#8A8A92]">
-              Стена пока пуста — повесьте первый стикер
+              Пока пусто — повесьте первый стикер
             </p>
           )}
         </div>
@@ -250,6 +278,8 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
 
       <DecorationShopModal open={shopOpen} onClose={() => setShopOpen(false)} />
       <SupportModal open={supportOpen} onClose={() => setSupportOpen(false)} />
+      <RandomStickerModal open={randomOpen} onClose={() => setRandomOpen(false)} />
+      <OnboardingModal />
     </div>
   );
 }

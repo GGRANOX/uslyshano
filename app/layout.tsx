@@ -8,8 +8,8 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Стена",
-  description: "Анонимная стена настроений — повесь стикер, он проживёт 7 дней.",
+  title: "Услышано",
+  description: "Анонимно. Услышано. Повесь стикер с настроением — он проживёт 7 дней.",
 };
 
 export default function RootLayout({
