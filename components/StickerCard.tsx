@@ -206,7 +206,7 @@ export function StickerCard({
             onClick={() => onLike(sticker.id)}
             disabled={likePending || sticker.liked_by_me}
             className={`flex items-center gap-1 transition-colors disabled:cursor-default ${
-              sticker.liked_by_me ? "text-[#C96E8D]" : "hover:text-[#C96E8D]"
+              sticker.liked_by_me ? "text-[#C96E8D] font-bold" : "hover:text-[#C96E8D]"
             }`}
             aria-pressed={sticker.liked_by_me}
           >
