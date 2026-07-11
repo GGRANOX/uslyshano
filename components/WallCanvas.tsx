@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { computeCanvasHeight, CARD_HEIGHT } from "@/lib/layout";
+import { CARD_WIDTH, CARD_HEIGHT, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/layout";
 import { Header } from "./Header";
 import { Composer } from "./Composer";
 import { StickerCard } from "./StickerCard";
@@ -21,7 +21,7 @@ import {
   WALL_TEXT_MUTED_LIGHT,
 } from "@/lib/moods";
 
-const VIRTUALIZATION_BUFFER = 500; // px над/под видимой областью
+const VIRTUALIZATION_BUFFER = 500; // px за пределами видимой области
 const WALL_THEME_STORAGE_KEY = "uslyshano-wall-theme";
 type WallTheme = "dark" | "light";
 
@@ -30,6 +30,26 @@ type WallTheme = "dark" | "light";
 // создании — так плотность остаётся верной, даже если несколько спонсорских
 // стикеров случайно оказались в одной области холста.
 const SPONSORED_RATIO = 15;
+
+// Холст фиксированного размера (lib/layout.ts) — таскаем его через pan
+// вместо обычного скролла, чтобы можно было двигаться и по вертикали, и по
+// горизонтали, но не бесконечно ("стенки" — границы CANVAS_WIDTH/HEIGHT).
+const DRAG_THRESHOLD = 6; // px — меньше считаем кликом, не перетаскиванием
+const PAN_TRANSITION_MS = 500;
+
+interface Pan {
+  x: number;
+  y: number;
+}
+
+function clampPan(x: number, y: number, viewportWidth: number, viewportHeight: number): Pan {
+  const minX = Math.min(0, viewportWidth - CANVAS_WIDTH);
+  const minY = Math.min(0, viewportHeight - CANVAS_HEIGHT);
+  return {
+    x: Math.min(0, Math.max(minX, x)),
+    y: Math.min(0, Math.max(minY, y)),
+  };
+}
 
 interface WallCanvasProps {
   initialStickers: StickerWithLikedState[];
@@ -40,8 +60,10 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
     () => new Map(initialStickers.map((s) => [s.id, s]))
   );
   const [pendingLikes, setPendingLikes] = useState<Set<string>>(new Set());
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
+  const [pan, setPan] = useState<Pan>({ x: 0, y: 0 });
+  const [panTransition, setPanTransition] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [decorationStyles, setDecorationStyles] = useState<Map<string, DecorationStyleKey>>(
     new Map()
   );
@@ -51,6 +73,10 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
   const [mySessionId, setMySessionId] = useState<string | null>(null);
   const [wallTheme, setWallTheme] = useState<WallTheme>("dark");
   const containerRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(
+    null
+  );
+  const centeredRef = useRef(false);
 
   // Тема холста запоминается на устройстве (не влияет на цвет самих
   // карточек — только на фон, см. uslyshano-design.md). Промис оборачивает
@@ -165,8 +191,7 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
   const measure = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
-    setScrollTop(el.scrollTop);
-    setViewportHeight(el.clientHeight);
+    setViewportSize({ width: el.clientWidth, height: el.clientHeight });
   }, []);
 
   useEffect(() => {
@@ -175,17 +200,77 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
     return () => window.removeEventListener("resize", measure);
   }, [measure]);
 
+  // Стартовая позиция — центр холста, чтобы при первом визите было видно
+  // стикеры со всех сторон, а не только пустой левый верхний угол. setState
+  // из callback'а Promise, а не синхронно в теле эффекта (см. тему выше).
+  useEffect(() => {
+    if (centeredRef.current) return;
+    if (viewportSize.width === 0 && viewportSize.height === 0) return;
+    centeredRef.current = true;
+    Promise.resolve().then(() => {
+      setPan(
+        clampPan(
+          viewportSize.width / 2 - CANVAS_WIDTH / 2,
+          viewportSize.height / 2 - CANVAS_HEIGHT / 2,
+          viewportSize.width,
+          viewportSize.height
+        )
+      );
+    });
+  }, [viewportSize]);
+
+  function handlePointerDown(e: React.PointerEvent) {
+    if (e.button !== 0 && e.pointerType === "mouse") return; // только левая кнопка мыши
+    dragRef.current = { startX: e.clientX, startY: e.clientY, originX: pan.x, originY: pan.y, moved: false };
+    setPanTransition(false);
+  }
+
+  function handlePointerMove(e: React.PointerEvent) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.moved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      setIsDragging(true);
+    }
+    setPan(clampPan(drag.originX + dx, drag.originY + dy, viewportSize.width, viewportSize.height));
+  }
+
+  function handlePointerUp() {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    setIsDragging(false);
+    if (drag?.moved) {
+      // После настоящего перетаскивания браузер всё равно шлёт click по
+      // элементу под пальцем/курсором — гасим один такой "призрачный" клик,
+      // чтобы драг не срабатывал как нажатие на кнопку под ним.
+      const suppressClick = (ev: MouseEvent) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+      };
+      document.addEventListener("click", suppressClick, { capture: true, once: true });
+    }
+  }
+
   const allStickers = useMemo(() => Array.from(stickers.values()), [stickers]);
-  const canvasHeight = useMemo(() => computeCanvasHeight(allStickers), [allStickers]);
 
   const visibleStickers = useMemo(() => {
     const inViewport =
-      viewportHeight === 0
+      viewportSize.width === 0 || viewportSize.height === 0
         ? allStickers // до первого измерения — рендерим всё
         : allStickers.filter((s) => {
-            const top = scrollTop - VIRTUALIZATION_BUFFER;
-            const bottom = scrollTop + viewportHeight + VIRTUALIZATION_BUFFER;
-            return s.position_y + CARD_HEIGHT >= top && s.position_y <= bottom;
+            const left = -pan.x - VIRTUALIZATION_BUFFER;
+            const right = -pan.x + viewportSize.width + VIRTUALIZATION_BUFFER;
+            const top = -pan.y - VIRTUALIZATION_BUFFER;
+            const bottom = -pan.y + viewportSize.height + VIRTUALIZATION_BUFFER;
+            return (
+              s.position_x + CARD_WIDTH >= left &&
+              s.position_x <= right &&
+              s.position_y + CARD_HEIGHT >= top &&
+              s.position_y <= bottom
+            );
           });
 
     const regular = inViewport.filter((s) => !s.is_sponsored);
@@ -196,7 +281,7 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
       return inViewport;
     }
     return [...regular, ...sponsored.slice(0, sponsoredLimit)];
-  }, [allStickers, scrollTop, viewportHeight]);
+  }, [allStickers, pan, viewportSize]);
 
   async function handleLike(id: string) {
     if (pendingLikes.has(id)) return;
@@ -264,15 +349,35 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
     }
   }
 
+  async function handleDelete(id: string) {
+    const response = await fetch(`/api/stickers/${id}`, { method: "DELETE" });
+    if (!response.ok) {
+      throw new Error("delete failed");
+    }
+    setStickers((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
   function handleCreated(sticker: PublicSticker) {
     setStickers((prev) => {
       const next = new Map(prev);
       next.set(sticker.id, { ...sticker, liked_by_me: false });
       return next;
     });
-    requestAnimationFrame(() => {
-      containerRef.current?.scrollTo({ top: sticker.position_y - 80, behavior: "smooth" });
-    });
+    setPanTransition(true);
+    setPan(
+      clampPan(
+        viewportSize.width / 2 - (sticker.position_x + CARD_WIDTH / 2),
+        viewportSize.height / 2 - (sticker.position_y + CARD_HEIGHT / 2),
+        viewportSize.width,
+        viewportSize.height
+      )
+    );
+    setTimeout(() => setPanTransition(false), PAN_TRANSITION_MS);
   }
 
   return (
@@ -291,10 +396,22 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
 
       <div
         ref={containerRef}
-        onScroll={measure}
-        className="flex-1 overflow-x-hidden overflow-y-auto pt-24 pb-40"
+        className={`relative flex-1 overflow-hidden ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+        style={{ touchAction: "none" }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       >
-        <div className="relative mx-auto max-w-[1200px]" style={{ height: canvasHeight }}>
+        <div
+          className="absolute left-0 top-0"
+          style={{
+            width: CANVAS_WIDTH,
+            height: CANVAS_HEIGHT,
+            transform: `translate(${pan.x}px, ${pan.y}px)`,
+            transition: panTransition ? `transform ${PAN_TRANSITION_MS}ms ease` : undefined,
+          }}
+        >
           {visibleStickers.map((sticker) => (
             <StickerCard
               key={sticker.id}
@@ -302,20 +419,21 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
               onLike={handleLike}
               likePending={pendingLikes.has(sticker.id)}
               onReport={handleReport}
+              onDelete={handleDelete}
               decorationStyleKey={
                 sticker.decoration_id ? decorationStyles.get(sticker.decoration_id) ?? null : null
               }
             />
           ))}
-          {allStickers.length === 0 && (
-            <p
-              className="absolute left-1/2 top-16 -translate-x-1/2 text-center text-sm"
-              style={{ color: wallTheme === "dark" ? WALL_TEXT_MUTED_DARK : WALL_TEXT_MUTED_LIGHT }}
-            >
-              Пока пусто — повесьте первый стикер
-            </p>
-          )}
         </div>
+        {allStickers.length === 0 && (
+          <p
+            className="pointer-events-none absolute left-1/2 top-1/2 max-w-xs -translate-x-1/2 -translate-y-1/2 text-center text-sm"
+            style={{ color: wallTheme === "dark" ? WALL_TEXT_MUTED_DARK : WALL_TEXT_MUTED_LIGHT }}
+          >
+            Пока пусто — повесьте первый стикер
+          </p>
+        )}
       </div>
 
       <Composer onCreated={handleCreated} />

@@ -22,6 +22,8 @@ interface StickerCardProps {
   /** Переопределяет поведение кнопки "Поделиться" (используется для
    * генерации картинки в "Рандомном листе" вместо копирования ссылки). */
   onShareOverride?: () => void;
+  /** Автор может удалить свой стикер (сервер проверяет session_id ещё раз). */
+  onDelete: (id: string) => Promise<void>;
 }
 
 export function StickerCard({
@@ -32,12 +34,14 @@ export function StickerCard({
   decorationStyleKey,
   variant = "wall",
   onShareOverride,
+  onDelete,
 }: StickerCardProps) {
   const [now, setNow] = useState(() => Date.now());
   const [reportState, setReportState] = useState<"idle" | "picking" | "sending" | "sent">(
     "idle"
   );
   const [reportReason, setReportReason] = useState<ReportReasonKey>(REPORT_REASONS[0].key);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 60_000);
@@ -72,7 +76,25 @@ export function StickerCard({
         // пользователь отменил — тихо игнорируем
       }
     }
-    await navigator.clipboard.writeText(url).catch(() => {});
+    try {
+      // navigator.clipboard отсутствует вовсе (не undefined-метод) вне
+      // secure context (HTTP, не localhost) — поэтому try/await, а не
+      // .catch() на возможно-undefined результате.
+      await navigator.clipboard?.writeText(url);
+    } catch {
+      // буфер обмена недоступен — тихо игнорируем
+    }
+  }
+
+  async function handleDelete() {
+    if (deleting) return;
+    if (!window.confirm("Удалить этот стикер безвозвратно?")) return;
+    setDeleting(true);
+    try {
+      await onDelete(sticker.id);
+    } catch {
+      setDeleting(false);
+    }
   }
 
   async function handleReportSubmit() {
@@ -97,16 +119,17 @@ export function StickerCard({
         sticker.is_sponsored ? "ring-2 ring-[#E3A93B]" : ""
       }`}
       style={{
-        left: isWall ? `${sticker.position_x}%` : undefined,
+        // position_x/position_y — абсолютные px в системе координат холста
+        // (lib/layout.ts), холст фиксированного размера таскается через
+        // pan в WallCanvas — карточке не нужно подстраиваться под вьюпорт.
+        left: isWall ? sticker.position_x : undefined,
         top: isWall ? sticker.position_y : undefined,
-        // На узких экранах CARD_WIDTH (260px) может не влезать вместе с
-        // left:N% и вызывать горизонтальный скролл всей страницы — зажимаем
-        // шириной вьюпорта минус отступы. Позиционирование/collision-логика
-        // (lib/layout.ts) по-прежнему считается от CARD_WIDTH — это ок, при
-        // сжатии карточка становится только компактнее, не шире расчётного.
-        width: isWall ? `min(${CARD_WIDTH}px, calc(100vw - 32px))` : undefined,
+        width: isWall ? CARD_WIDTH : undefined,
         backgroundColor: sticker.is_sponsored ? "#FDFCFA" : isFading ? CARD_BG_AGED : CARD_BG,
-        transform: `rotate(${sticker.rotation}deg)`,
+        // Наклон — часть облика холста ("живая доска"); в "Рандомном
+        // листе" (variant="standalone") карточка на отдельном экране, там
+        // ровнее читается без наклона.
+        transform: isWall ? `rotate(${sticker.rotation}deg)` : undefined,
         ...decorationVisual.style,
       }}
     >
@@ -160,18 +183,32 @@ export function StickerCard({
       )}
 
       <div className="mt-3 flex items-center gap-4 text-sm text-[#6B6B72]">
-        <button
-          type="button"
-          onClick={() => onLike(sticker.id)}
-          disabled={likePending || sticker.liked_by_me}
-          className={`flex items-center gap-1 transition-colors disabled:cursor-default ${
-            sticker.liked_by_me ? "text-[#C96E8D]" : "hover:text-[#C96E8D]"
-          }`}
-          aria-pressed={sticker.liked_by_me}
-        >
-          <span aria-hidden>🫂</span>
-          <span>Услышал(а)</span>
-        </button>
+        {!sticker.is_own && (
+          <button
+            type="button"
+            onClick={() => onLike(sticker.id)}
+            disabled={likePending || sticker.liked_by_me}
+            className={`flex items-center gap-1 transition-colors disabled:cursor-default ${
+              sticker.liked_by_me ? "text-[#C96E8D]" : "hover:text-[#C96E8D]"
+            }`}
+            aria-pressed={sticker.liked_by_me}
+          >
+            <span aria-hidden>🫂</span>
+            <span>Услышал(а)</span>
+          </button>
+        )}
+
+        {sticker.is_own && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex items-center gap-1 hover:text-[#C1554A] disabled:cursor-default disabled:opacity-40"
+          >
+            <span aria-hidden>🗑️</span>
+            <span>{deleting ? "Удаление..." : "Удалить"}</span>
+          </button>
+        )}
 
         <span className="flex items-center gap-1 opacity-50" title="Комментарии скоро">
           <span aria-hidden>💬</span>

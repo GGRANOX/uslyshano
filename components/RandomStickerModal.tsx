@@ -89,6 +89,15 @@ export function RandomStickerModal({ open, onClose }: RandomStickerModalProps) {
     }
   }
 
+  async function handleDelete(id: string) {
+    const response = await fetch(`/api/stickers/${id}`, { method: "DELETE" });
+    if (!response.ok) {
+      throw new Error("delete failed");
+    }
+    setSticker(null);
+    setEmpty(true);
+  }
+
   async function handleShareImage() {
     if (!sticker || sharing) return;
     setSharing(true);
@@ -151,6 +160,7 @@ export function RandomStickerModal({ open, onClose }: RandomStickerModalProps) {
               onLike={handleLike}
               likePending={likePending}
               onReport={handleReport}
+              onDelete={handleDelete}
               decorationStyleKey={
                 sticker.decoration_id
                   ? decorationStyles.get(sticker.decoration_id) ?? null

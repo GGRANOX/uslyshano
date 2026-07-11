@@ -1,15 +1,12 @@
-// Раскладка стикеров на холсте: "свободно разбросаны... не жёсткая сетка"
-// (ТЗ раздел 4). x храним в процентах ширины (холст адаптивный, без
-// горизонтального скролла), y — в логических пикселях от начала холста,
-// чтобы высота холста могла расти, не сдвигая уже расставленные стикеры.
-//
-// REFERENCE_WIDTH нужен только чтобы переводить x% в px для проверки
-// наложений — на реальный рендер не влияет.
-const REFERENCE_WIDTH = 1200;
+// Раскладка стикеров на холсте: свободный 2D-холст фиксированного размера
+// ("стенки"), по которому можно таскать вьюпорт в любую сторону — не
+// бесконечный, но больше экрана. position_x/position_y — абсолютные px в
+// системе координат холста (0,0 — левый верхний угол).
 export const CARD_WIDTH = 260;
 export const CARD_HEIGHT = 170;
 const PADDING = 24;
-export const MIN_CANVAS_HEIGHT = 900;
+export const CANVAS_WIDTH = 3000;
+export const CANVAS_HEIGHT = 3000;
 const MAX_ATTEMPTS = 30;
 
 export interface ExistingPosition {
@@ -17,20 +14,11 @@ export interface ExistingPosition {
   position_y: number;
 }
 
-export function computeCanvasHeight(existing: ExistingPosition[]): number {
-  const maxBottom = existing.reduce(
-    (max, s) => Math.max(max, s.position_y + CARD_HEIGHT),
-    0
-  );
-  return Math.max(MIN_CANVAS_HEIGHT, maxBottom + PADDING * 2);
-}
-
-function toPxRect(xPercent: number, y: number) {
-  const x = (xPercent / 100) * REFERENCE_WIDTH;
+function toRect(x: number, y: number) {
   return { left: x, right: x + CARD_WIDTH, top: y, bottom: y + CARD_HEIGHT };
 }
 
-function overlapArea(a: ReturnType<typeof toPxRect>, b: ReturnType<typeof toPxRect>) {
+function overlapArea(a: ReturnType<typeof toRect>, b: ReturnType<typeof toRect>) {
   const xOverlap = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
   const yOverlap = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
   return xOverlap * yOverlap;
@@ -42,23 +30,22 @@ export interface PickedPosition {
   rotation: number;
 }
 
-// Несколько попыток подобрать свободное место, затем допускаем лёгкое
-// наложение — берём попытку с наименьшей суммарной площадью пересечения
-// (ТЗ раздел 6, Фаза 1).
+// Несколько попыток подобрать свободное место в границах холста, затем
+// допускаем лёгкое наложение — берём попытку с наименьшей суммарной
+// площадью пересечения (ТЗ раздел 6, Фаза 1).
 export function pickStickerPosition(existing: ExistingPosition[]): PickedPosition {
-  const canvasHeight = computeCanvasHeight(existing);
-  const paddingPercent = (PADDING / REFERENCE_WIDTH) * 100;
-  const maxXPercent = 100 - (CARD_WIDTH / REFERENCE_WIDTH) * 100 - paddingPercent;
+  const maxX = CANVAS_WIDTH - CARD_WIDTH - PADDING;
+  const maxY = CANVAS_HEIGHT - CARD_HEIGHT - PADDING;
 
-  let bestCandidate = { x: paddingPercent, y: PADDING, overlap: Infinity };
+  let bestCandidate = { x: PADDING, y: PADDING, overlap: Infinity };
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const x = paddingPercent + Math.random() * Math.max(0, maxXPercent - paddingPercent);
-    const y = PADDING + Math.random() * Math.max(0, canvasHeight - CARD_HEIGHT - PADDING * 2);
-    const candidateRect = toPxRect(x, y);
+    const x = PADDING + Math.random() * Math.max(0, maxX - PADDING);
+    const y = PADDING + Math.random() * Math.max(0, maxY - PADDING);
+    const candidateRect = toRect(x, y);
 
     const totalOverlap = existing.reduce(
-      (sum, s) => sum + overlapArea(candidateRect, toPxRect(s.position_x, s.position_y)),
+      (sum, s) => sum + overlapArea(candidateRect, toRect(s.position_x, s.position_y)),
       0
     );
 

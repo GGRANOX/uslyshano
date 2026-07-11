@@ -94,10 +94,19 @@ export async function POST(request: Request) {
     moderation = await moderateText(text);
   } catch (error) {
     console.error("Moderation error", error);
-    return NextResponse.json(
-      { error: "Не удалось проверить сообщение модерацией. Попробуйте ещё раз." },
-      { status: 502 }
-    );
+    // В production модерация обязательна — публикацию блокируем. В
+    // локальной разработке (нет/кончился баланс OpenAI и т.п.) даём
+    // публиковать без неё, полагаясь на словарь запрещённых слов выше —
+    // иначе тестировать сайт без настроенного биллинга невозможно.
+    // ВАЖНО: перед реальным запуском (Vercel) убедитесь, что
+    // OPENAI_API_KEY рабочий — там это исключение не сработает.
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { error: "Не удалось проверить сообщение модерацией. Попробуйте ещё раз." },
+        { status: 502 }
+      );
+    }
+    moderation = { flagged: false };
   }
 
   if (moderation.flagged) {

@@ -16,7 +16,14 @@ export function KaspiPaymentBlock({ amountLabel, purposeCode }: KaspiPaymentBloc
 
   async function copyCode() {
     if (!purposeCode) return;
-    await navigator.clipboard.writeText(purposeCode).catch(() => {});
+    try {
+      // navigator.clipboard отсутствует вовсе вне secure context (HTTP,
+      // не localhost) — поэтому try/await, а не .catch() на возможно-
+      // undefined результате.
+      await navigator.clipboard?.writeText(purposeCode);
+    } catch {
+      // буфер обмена недоступен — тихо игнорируем
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

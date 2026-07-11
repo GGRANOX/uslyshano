@@ -27,6 +27,19 @@ export async function POST(
 
   const supabase = createAdminClient();
 
+  const { data: sticker } = await supabase
+    .from("stickers")
+    .select("session_id")
+    .eq("id", stickerId)
+    .maybeSingle();
+
+  if (sticker?.session_id === sessionId) {
+    return NextResponse.json(
+      { error: "Нельзя отметить «Услышал(а)» на собственном стикере." },
+      { status: 403 }
+    );
+  }
+
   const { data, error } = await supabase
     .rpc("like_sticker", { p_sticker_id: stickerId, p_session_id: sessionId })
     .single();
