@@ -39,21 +39,43 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/ё/g, "е");
 }
 
+function isBannedWord(word: string): boolean {
+  const normalized = normalize(word);
+  return BANNED_ROOTS.some((root) => normalized.includes(normalize(root)));
+}
+
 export interface WordFilterResult {
   flagged: boolean;
   reason?: string;
 }
 
 export function checkBannedWords(text: string): WordFilterResult {
-  const normalized = normalize(text);
-  const hit = BANNED_ROOTS.find((root) => normalized.includes(normalize(root)));
-
-  if (!hit) {
+  if (!isBannedAnywhere(text)) {
     return { flagged: false };
   }
-
   return {
     flagged: true,
     reason: "Сообщение содержит запрещённые слова.",
   };
+}
+
+function isBannedAnywhere(text: string): boolean {
+  return text.split(/\s+/).some(isBannedWord);
+}
+
+export interface MaskedSegment {
+  text: string;
+  masked: boolean;
+}
+
+// Публикацию по запрещённым словам больше не блокируем (см.
+// app/api/stickers/route.ts) — вместо этого на клиенте (StickerCard)
+// замазываем конкретные слова, пока читатель сам не нажмёт на одно из них
+// (см. использование в StickerCard.tsx). Разбиваем по пробелам, сохраняя
+// сами пробелы/переносы строк как отдельные немаскируемые сегменты.
+export function maskBannedWords(text: string): MaskedSegment[] {
+  return text.split(/(\s+)/).map((chunk) => ({
+    text: chunk,
+    masked: chunk.trim().length > 0 && isBannedWord(chunk),
+  }));
 }

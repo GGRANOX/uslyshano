@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { moderateText } from "@/lib/moderation";
-import { checkBannedWords } from "@/lib/wordFilter";
 import { isRateLimited, POSTS_PER_HOUR_LIMIT } from "@/lib/rateLimit";
 import { pickStickerPosition } from "@/lib/layout";
 import { MOOD_MAP } from "@/lib/moods";
@@ -84,10 +83,9 @@ export async function POST(request: Request) {
     }
   }
 
-  const wordFilterResult = checkBannedWords(text);
-  if (wordFilterResult.flagged) {
-    return NextResponse.json({ error: wordFilterResult.reason }, { status: 422 });
-  }
+  // Запрещённые слова больше не блокируют публикацию — вместо этого
+  // конкретные слова замазываются на клиенте (StickerCard, см.
+  // lib/wordFilter.ts:maskBannedWords), с раскрытием по клику.
 
   let moderation;
   try {

@@ -6,6 +6,7 @@ import type { StickerWithLikedState } from "@/lib/types";
 import { CARD_WIDTH } from "@/lib/layout";
 import { REPORT_REASONS, type ReportReasonKey } from "@/lib/reportReasons";
 import { getDecorationVisual, type DecorationStyleKey } from "@/lib/decorations";
+import { maskBannedWords } from "@/lib/wordFilter";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 const FADE_WINDOW_MS = DAY_MS; // последние 24 часа жизни — состаренный цвет + загнутый уголок
@@ -42,6 +43,7 @@ export function StickerCard({
   );
   const [reportReason, setReportReason] = useState<ReportReasonKey>(REPORT_REASONS[0].key);
   const [deleting, setDeleting] = useState(false);
+  const [wordsRevealed, setWordsRevealed] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 60_000);
@@ -164,7 +166,22 @@ export function StickerCard({
         className="mt-2 whitespace-pre-wrap break-words text-sm leading-snug"
         style={{ color: CARD_TEXT }}
       >
-        {sticker.text}
+        {maskBannedWords(sticker.text).map((segment, i) =>
+          segment.masked && !wordsRevealed ? (
+            <span
+              key={i}
+              onClick={() => setWordsRevealed(true)}
+              role="button"
+              title="Нажмите, чтобы показать"
+              className="cursor-pointer rounded-sm select-none"
+              style={{ filter: "blur(4px)" }}
+            >
+              {segment.text}
+            </span>
+          ) : (
+            <span key={i}>{segment.text}</span>
+          )
+        )}
       </p>
 
       <span
