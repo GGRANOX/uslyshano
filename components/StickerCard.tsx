@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MOOD_MAP } from "@/lib/moods";
+import { MOOD_MAP, CARD_BG, CARD_BG_AGED, CARD_TEXT } from "@/lib/moods";
 import type { StickerWithLikedState } from "@/lib/types";
 import { CARD_WIDTH } from "@/lib/layout";
 import { REPORT_REASONS, type ReportReasonKey } from "@/lib/reportReasons";
 import { getDecorationVisual, type DecorationStyleKey } from "@/lib/decorations";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
-const FADE_WINDOW_MS = DAY_MS; // последние 24 часа жизни — постепенное выцветание
+const FADE_WINDOW_MS = DAY_MS; // последние 24 часа жизни — состаренный цвет + загнутый уголок
 
 interface StickerCardProps {
   sticker: StickerWithLikedState;
@@ -50,7 +50,6 @@ export function StickerCard({
   const daysRemaining = Math.max(0, Math.ceil(remainingMs / DAY_MS));
 
   const isFading = remainingMs <= FADE_WINDOW_MS;
-  const opacity = isFading ? Math.max(0.35, remainingMs / FADE_WINDOW_MS) : 1;
 
   const timestampLabel = new Intl.DateTimeFormat("ru-RU", {
     day: "numeric",
@@ -92,7 +91,7 @@ export function StickerCard({
   return (
     <div
       id={`sticker-${sticker.id}`}
-      className={`rounded-2xl p-4 shadow-md shadow-black/5 transition-opacity duration-700 ${
+      className={`rounded-2xl p-4 shadow-md shadow-black/10 ${
         isWall ? "absolute" : "relative mx-auto w-full max-w-sm"
       } ${isFading ? "sticker-corner-fold" : ""} ${
         sticker.is_sponsored ? "ring-2 ring-[#E3A93B]" : ""
@@ -101,12 +100,17 @@ export function StickerCard({
         left: isWall ? `${sticker.position_x}%` : undefined,
         top: isWall ? sticker.position_y : undefined,
         width: isWall ? CARD_WIDTH : undefined,
-        backgroundColor: sticker.is_sponsored ? "#FDFCFA" : mood.cardBg,
+        backgroundColor: sticker.is_sponsored ? "#FDFCFA" : isFading ? CARD_BG_AGED : CARD_BG,
         transform: `rotate(${sticker.rotation}deg)`,
-        opacity,
         ...decorationVisual.style,
       }}
     >
+      <span
+        className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full"
+        style={{ backgroundColor: mood.accent }}
+        aria-hidden
+      />
+
       {decorationVisual.cornerStars && (
         <>
           <span className="absolute -top-2 -left-2 text-sm" aria-hidden>
@@ -124,14 +128,14 @@ export function StickerCard({
         </span>
       )}
 
-      <div className="flex items-start justify-between">
-        <span className="text-2xl leading-none" aria-hidden>
-          {mood.emoji}
-        </span>
+      <div className="flex items-start justify-end pr-3">
         <span className="text-xs text-[#6B6B72]">{timestampLabel}</span>
       </div>
 
-      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-snug text-[#2A2A2E]">
+      <p
+        className="mt-2 whitespace-pre-wrap break-words text-sm leading-snug"
+        style={{ color: CARD_TEXT }}
+      >
         {sticker.text}
       </p>
 

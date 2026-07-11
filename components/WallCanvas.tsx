@@ -240,7 +240,7 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
   }
 
   return (
-    <div className="relative flex flex-1 flex-col">
+    <div className="relative flex flex-1 flex-col bg-[var(--wall-bg)]">
       <Header
         count={allStickers.length}
         onOpenShop={() => setShopOpen(true)}
@@ -267,7 +267,7 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
             />
           ))}
           {allStickers.length === 0 && (
-            <p className="absolute left-1/2 top-16 -translate-x-1/2 text-center text-sm text-[#8A8A92]">
+            <p className="absolute left-1/2 top-16 -translate-x-1/2 text-center text-sm text-[#C9BBA0]">
               Пока пусто — повесьте первый стикер
             </p>
           )}

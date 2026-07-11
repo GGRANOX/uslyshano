@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { MOOD_MAP } from "@/lib/moods";
+import { MOOD_MAP, CARD_BG, CARD_TEXT } from "@/lib/moods";
 import type { Mood } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -44,15 +44,15 @@ export async function GET(
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: "#F1F0F5",
+            backgroundColor: "#2E2822",
             fontFamily: "sans-serif",
           }}
         >
           <div style={{ fontSize: 64 }}>🫂</div>
-          <div style={{ fontSize: 40, color: "#2A2A2E", marginTop: 24 }}>
+          <div style={{ fontSize: 40, color: "#F3EBDB", marginTop: 24 }}>
             Это сообщение уже исчезло
           </div>
-          <div style={{ fontSize: 28, color: "#8A8A92", marginTop: 16 }}>Услышано</div>
+          <div style={{ fontSize: 28, color: "#C9BBA0", marginTop: 16 }}>Услышано</div>
         </div>
       ),
       { width: SIZE, height: SIZE }
@@ -74,7 +74,7 @@ export async function GET(
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#F1F0F5",
+          backgroundColor: "#2E2822",
           fontFamily: "sans-serif",
         }}
       >
@@ -87,7 +87,7 @@ export async function GET(
             justifyContent: "space-between",
             padding: 64,
             borderRadius: 48,
-            backgroundColor: mood.cardBg,
+            backgroundColor: CARD_BG,
           }}
         >
           <div style={{ fontSize: 96, display: "flex" }}>{mood.emoji}</div>
@@ -95,7 +95,7 @@ export async function GET(
             style={{
               fontSize: text.length > 120 ? 40 : 52,
               lineHeight: 1.35,
-              color: "#2A2A2E",
+              color: CARD_TEXT,
               display: "flex",
             }}
           >

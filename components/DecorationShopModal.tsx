@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getDecorationVisual, type DecorationInfo } from "@/lib/decorations";
-import { MOOD_MAP } from "@/lib/moods";
+import { MOOD_MAP, CARD_BG } from "@/lib/moods";
 import { KaspiPaymentBlock } from "./KaspiPaymentBlock";
 
 interface DecorationShopModalProps {
@@ -68,7 +68,7 @@ export function DecorationShopModal({ open, onClose }: DecorationShopModalProps)
                 <div className="flex items-center gap-3">
                   <div
                     className="relative flex h-16 w-16 items-center justify-center rounded-xl text-2xl"
-                    style={{ backgroundColor: PREVIEW_MOOD.cardBg, ...visual.style }}
+                    style={{ backgroundColor: CARD_BG, ...visual.style }}
                   >
                     {PREVIEW_MOOD.emoji}
                     {visual.cornerStars && (
