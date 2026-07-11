@@ -3,9 +3,18 @@ interface HeaderProps {
   onOpenShop: () => void;
   onOpenSupport: () => void;
   onOpenRandom: () => void;
+  wallTheme: "dark" | "light";
+  onToggleWallTheme: () => void;
 }
 
-export function Header({ count, onOpenShop, onOpenSupport, onOpenRandom }: HeaderProps) {
+export function Header({
+  count,
+  onOpenShop,
+  onOpenSupport,
+  onOpenRandom,
+  wallTheme,
+  onToggleWallTheme,
+}: HeaderProps) {
   return (
     <div className="pointer-events-none fixed top-4 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
       <div className="flex items-center gap-2">
@@ -43,6 +52,15 @@ export function Header({ count, onOpenShop, onOpenSupport, onOpenRandom }: Heade
           title="Поддержать проект"
         >
           💛
+        </button>
+
+        <button
+          type="button"
+          onClick={onToggleWallTheme}
+          className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/90 px-3 py-2.5 text-sm shadow-lg shadow-black/5 backdrop-blur hover:bg-white"
+          title={wallTheme === "dark" ? "Светлый холст" : "Тёмный холст"}
+        >
+          {wallTheme === "dark" ? "☀️" : "🌙"}
         </button>
       </div>
 

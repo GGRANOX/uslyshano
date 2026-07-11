@@ -14,8 +14,16 @@ import { toPublicSticker } from "@/lib/publicSticker";
 import type { PublicSticker, Sticker, StickerWithLikedState } from "@/lib/types";
 import type { ReportReasonKey } from "@/lib/reportReasons";
 import type { DecorationStyleKey } from "@/lib/decorations";
+import {
+  WALL_BG_DARK,
+  WALL_BG_LIGHT,
+  WALL_TEXT_MUTED_DARK,
+  WALL_TEXT_MUTED_LIGHT,
+} from "@/lib/moods";
 
 const VIRTUALIZATION_BUFFER = 500; // px над/под видимой областью
+const WALL_THEME_STORAGE_KEY = "uslyshano-wall-theme";
+type WallTheme = "dark" | "light";
 
 // Спонсорские стикеры — не больше 1 на каждые ~15 обычных в видимой области
 // (ТЗ раздел 6, Фаза 3). Ограничение применяется здесь, при рендере, а не при
@@ -41,7 +49,35 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
   const [supportOpen, setSupportOpen] = useState(false);
   const [randomOpen, setRandomOpen] = useState(false);
   const [mySessionId, setMySessionId] = useState<string | null>(null);
+  const [wallTheme, setWallTheme] = useState<WallTheme>("dark");
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Тема холста запоминается на устройстве (не влияет на цвет самих
+  // карточек — только на фон, см. uslyshano-design.md). Промис оборачивает
+  // чтение localStorage — setState вызывается из callback'а, а не синхронно
+  // в теле эффекта (react-hooks/set-state-in-effect), как в OnboardingModal.
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      try {
+        const stored = localStorage.getItem(WALL_THEME_STORAGE_KEY);
+        if (stored === "light" || stored === "dark") setWallTheme(stored);
+      } catch {
+        // localStorage недоступен — остаёмся на теме по умолчанию
+      }
+    });
+  }, []);
+
+  function toggleWallTheme() {
+    setWallTheme((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      try {
+        localStorage.setItem(WALL_THEME_STORAGE_KEY, next);
+      } catch {
+        // ничего страшного — просто не запомнится на этом устройстве
+      }
+      return next;
+    });
+  }
   // Realtime-подписка ниже монтируется один раз ([]) — читает актуальный
   // sessionId через ref, а не через замыкание над устаревшим state.
   const mySessionIdRef = useRef<string | null>(null);
@@ -240,18 +276,23 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
   }
 
   return (
-    <div className="relative flex flex-1 flex-col bg-[var(--wall-bg)]">
+    <div
+      className="relative flex flex-1 flex-col"
+      style={{ backgroundColor: wallTheme === "dark" ? WALL_BG_DARK : WALL_BG_LIGHT }}
+    >
       <Header
         count={allStickers.length}
         onOpenShop={() => setShopOpen(true)}
         onOpenSupport={() => setSupportOpen(true)}
         onOpenRandom={() => setRandomOpen(true)}
+        wallTheme={wallTheme}
+        onToggleWallTheme={toggleWallTheme}
       />
 
       <div
         ref={containerRef}
         onScroll={measure}
-        className="flex-1 overflow-y-auto pt-24 pb-40"
+        className="flex-1 overflow-x-hidden overflow-y-auto pt-24 pb-40"
       >
         <div className="relative mx-auto max-w-[1200px]" style={{ height: canvasHeight }}>
           {visibleStickers.map((sticker) => (
@@ -267,7 +308,10 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
             />
           ))}
           {allStickers.length === 0 && (
-            <p className="absolute left-1/2 top-16 -translate-x-1/2 text-center text-sm text-[#C9BBA0]">
+            <p
+              className="absolute left-1/2 top-16 -translate-x-1/2 text-center text-sm"
+              style={{ color: wallTheme === "dark" ? WALL_TEXT_MUTED_DARK : WALL_TEXT_MUTED_LIGHT }}
+            >
               Пока пусто — повесьте первый стикер
             </p>
           )}

@@ -99,7 +99,12 @@ export function StickerCard({
       style={{
         left: isWall ? `${sticker.position_x}%` : undefined,
         top: isWall ? sticker.position_y : undefined,
-        width: isWall ? CARD_WIDTH : undefined,
+        // На узких экранах CARD_WIDTH (260px) может не влезать вместе с
+        // left:N% и вызывать горизонтальный скролл всей страницы — зажимаем
+        // шириной вьюпорта минус отступы. Позиционирование/collision-логика
+        // (lib/layout.ts) по-прежнему считается от CARD_WIDTH — это ок, при
+        // сжатии карточка становится только компактнее, не шире расчётного.
+        width: isWall ? `min(${CARD_WIDTH}px, calc(100vw - 32px))` : undefined,
         backgroundColor: sticker.is_sponsored ? "#FDFCFA" : isFading ? CARD_BG_AGED : CARD_BG,
         transform: `rotate(${sticker.rotation}deg)`,
         ...decorationVisual.style,
