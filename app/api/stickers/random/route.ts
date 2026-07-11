@@ -6,10 +6,12 @@ import { SESSION_COOKIE, generateSessionId } from "@/lib/session";
 import type { Sticker } from "@/lib/types";
 
 // "Рандомный лист" (changelog "Услышано" п.3) — один случайный не скрытый и
-// не истёкший стикер. ?exclude=<id> — чтобы "Ещё один" не показывал тот же
-// стикер повторно на маленьких наборах данных.
+// не истёкший стикер. ?exclude=<id1,id2,...> — весь список уже показанных в
+// текущем "круге" (см. RandomStickerModal), чтобы не повторяться, пока круг
+// не пройден целиком.
 export async function GET(request: Request) {
-  const excludeId = new URL(request.url).searchParams.get("exclude");
+  const excludeParam = new URL(request.url).searchParams.get("exclude");
+  const excludeIds = excludeParam ? excludeParam.split(",").filter(Boolean) : null;
 
   const cookieStore = await cookies();
   let sessionId = cookieStore.get(SESSION_COOKIE)?.value;
@@ -27,7 +29,7 @@ export async function GET(request: Request) {
   const supabase = createAdminClient();
 
   const { data, error } = await supabase.rpc("get_random_sticker", {
-    p_exclude_id: excludeId,
+    p_exclude_ids: excludeIds,
   });
 
   if (error) {

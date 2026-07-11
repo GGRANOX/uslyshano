@@ -9,6 +9,15 @@ export const CANVAS_WIDTH = 3000;
 export const CANVAS_HEIGHT = 3000;
 const MAX_ATTEMPTS = 30;
 
+// Первые CENTER_CLUSTER_COUNT стикеров появляются кучкой у центра холста —
+// именно там стартует pan в WallCanvas, — а не в случайной точке всего
+// 3000x3000, иначе новая (пустая) доска выглядит как баг. Позиция внутри
+// этой области всё равно случайная, не сетка. После порога — обычный
+// разброс по всему холсту.
+const CENTER_CLUSTER_COUNT = 7;
+const CENTER_CLUSTER_HALF_WIDTH = 500;
+const CENTER_CLUSTER_HALF_HEIGHT = 350;
+
 export interface ExistingPosition {
   position_x: number;
   position_y: number;
@@ -34,14 +43,29 @@ export interface PickedPosition {
 // допускаем лёгкое наложение — берём попытку с наименьшей суммарной
 // площадью пересечения (ТЗ раздел 6, Фаза 1).
 export function pickStickerPosition(existing: ExistingPosition[]): PickedPosition {
-  const maxX = CANVAS_WIDTH - CARD_WIDTH - PADDING;
-  const maxY = CANVAS_HEIGHT - CARD_HEIGHT - PADDING;
+  const useCenterCluster = existing.length < CENTER_CLUSTER_COUNT;
 
-  let bestCandidate = { x: PADDING, y: PADDING, overlap: Infinity };
+  const fullMaxX = CANVAS_WIDTH - CARD_WIDTH - PADDING;
+  const fullMaxY = CANVAS_HEIGHT - CARD_HEIGHT - PADDING;
+
+  const minX = useCenterCluster
+    ? Math.max(PADDING, CANVAS_WIDTH / 2 - CENTER_CLUSTER_HALF_WIDTH)
+    : PADDING;
+  const maxX = useCenterCluster
+    ? Math.min(fullMaxX, CANVAS_WIDTH / 2 + CENTER_CLUSTER_HALF_WIDTH - CARD_WIDTH)
+    : fullMaxX;
+  const minY = useCenterCluster
+    ? Math.max(PADDING, CANVAS_HEIGHT / 2 - CENTER_CLUSTER_HALF_HEIGHT)
+    : PADDING;
+  const maxY = useCenterCluster
+    ? Math.min(fullMaxY, CANVAS_HEIGHT / 2 + CENTER_CLUSTER_HALF_HEIGHT - CARD_HEIGHT)
+    : fullMaxY;
+
+  let bestCandidate = { x: minX, y: minY, overlap: Infinity };
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const x = PADDING + Math.random() * Math.max(0, maxX - PADDING);
-    const y = PADDING + Math.random() * Math.max(0, maxY - PADDING);
+    const x = minX + Math.random() * Math.max(0, maxX - minX);
+    const y = minY + Math.random() * Math.max(0, maxY - minY);
     const candidateRect = toRect(x, y);
 
     const totalOverlap = existing.reduce(
