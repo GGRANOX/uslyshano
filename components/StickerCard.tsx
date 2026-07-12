@@ -204,58 +204,74 @@ export function StickerCard({
         </p>
       )}
 
-      <div className="mt-3 flex items-center gap-4 text-sm text-[#6B6B72]">
-        {!sticker.is_own && (
+      {sticker.is_sponsored ? (
+        // У рекламных стикеров нет реакции/жалобы/автора — вместо обычного
+        // ряда действий одна кнопка на ссылку, которую задал админ при
+        // публикации (см. components/admin/SponsoredStickerForm.tsx).
+        sticker.sponsor_url && (
+          <a
+            href={sticker.sponsor_url}
+            target="_blank"
+            rel="noopener noreferrer sponsored"
+            className="mt-3 flex items-center justify-center gap-1 rounded-full bg-[#2A2A2E] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            Узнать подробнее <span aria-hidden>→</span>
+          </a>
+        )
+      ) : (
+        <div className="mt-3 flex items-center gap-4 text-sm text-[#6B6B72]">
+          {!sticker.is_own && (
+            <button
+              type="button"
+              onClick={() => onLike(sticker.id)}
+              disabled={likePending || sticker.liked_by_me}
+              className={`flex items-center gap-1 transition-colors disabled:cursor-default ${
+                sticker.liked_by_me ? "text-[#C96E8D] font-bold" : "hover:text-[#C96E8D]"
+              }`}
+              aria-pressed={sticker.liked_by_me}
+            >
+              <span aria-hidden>🫂</span>
+              <span>Услышал(а)</span>
+            </button>
+          )}
+
+          {sticker.is_own && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="flex items-center gap-1 hover:text-[#C1554A] disabled:cursor-default disabled:opacity-40"
+            >
+              <span aria-hidden>🗑️</span>
+              <span>{deleting ? "Удаление..." : "Удалить"}</span>
+            </button>
+          )}
+
+          <span className="flex items-center gap-1 opacity-50" title="Комментарии скоро">
+            <span aria-hidden>💬</span>
+          </span>
+
           <button
             type="button"
-            onClick={() => onLike(sticker.id)}
-            disabled={likePending || sticker.liked_by_me}
-            className={`flex items-center gap-1 transition-colors disabled:cursor-default ${
-              sticker.liked_by_me ? "text-[#C96E8D] font-bold" : "hover:text-[#C96E8D]"
-            }`}
-            aria-pressed={sticker.liked_by_me}
+            onClick={handleShare}
+            className="flex items-center gap-1 hover:text-[#2A2A2E]"
+            aria-label="Поделиться"
           >
-            <span aria-hidden>🫂</span>
-            <span>Услышал(а)</span>
+            <span aria-hidden>↗</span>
           </button>
-        )}
 
-        {sticker.is_own && (
           <button
             type="button"
-            onClick={handleDelete}
-            disabled={deleting}
-            className="flex items-center gap-1 hover:text-[#C1554A] disabled:cursor-default disabled:opacity-40"
+            onClick={() => setReportState(reportState === "idle" ? "picking" : "idle")}
+            disabled={reportState === "sent"}
+            className="ml-auto flex items-center gap-1 hover:text-[#C1554A] disabled:cursor-default disabled:opacity-40"
+            aria-label="Пожаловаться"
+            title="Пожаловаться"
           >
-            <span aria-hidden>🗑️</span>
-            <span>{deleting ? "Удаление..." : "Удалить"}</span>
+            <span aria-hidden>🚩</span>
           </button>
-        )}
-
-        <span className="flex items-center gap-1 opacity-50" title="Комментарии скоро">
-          <span aria-hidden>💬</span>
-        </span>
-
-        <button
-          type="button"
-          onClick={handleShare}
-          className="flex items-center gap-1 hover:text-[#2A2A2E]"
-          aria-label="Поделиться"
-        >
-          <span aria-hidden>↗</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setReportState(reportState === "idle" ? "picking" : "idle")}
-          disabled={reportState === "sent"}
-          className="ml-auto flex items-center gap-1 hover:text-[#C1554A] disabled:cursor-default disabled:opacity-40"
-          aria-label="Пожаловаться"
-          title="Пожаловаться"
-        >
-          <span aria-hidden>🚩</span>
-        </button>
-      </div>
+        </div>
+      )}
 
       {reportState === "sent" && (
         <p className="mt-2 text-[11px] text-[#8A8A92]">Жалоба отправлена</p>

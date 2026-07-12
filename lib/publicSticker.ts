@@ -17,6 +17,7 @@ export function toPublicSticker(row: Sticker, viewerSessionId: string | null): P
     rotation: row.rotation,
     decoration_id: row.decoration_id,
     is_sponsored: row.is_sponsored,
+    sponsor_url: row.sponsor_url,
     is_hidden: row.is_hidden,
     created_at: row.created_at,
     expires_at: row.expires_at,

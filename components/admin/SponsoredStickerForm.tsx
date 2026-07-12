@@ -9,19 +9,20 @@ export function SponsoredStickerForm() {
   const router = useRouter();
   const [text, setText] = useState("");
   const [mood, setMood] = useState<Mood>(MOODS[0].key);
+  const [sponsorUrl, setSponsorUrl] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (!text.trim() || !sponsorUrl.trim()) return;
     setStatus("sending");
     setMessage(null);
     try {
       const response = await fetch("/api/admin/sponsored-stickers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.trim(), mood }),
+        body: JSON.stringify({ text: text.trim(), mood, sponsorUrl: sponsorUrl.trim() }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -31,6 +32,7 @@ export function SponsoredStickerForm() {
       }
       setStatus("done");
       setText("");
+      setSponsorUrl("");
       router.refresh();
     } catch {
       setStatus("error");
@@ -52,6 +54,13 @@ export function SponsoredStickerForm() {
         placeholder="Текст спонсорского сообщения"
         className="mt-3 w-full rounded-lg border border-black/10 p-2 text-sm"
       />
+      <input
+        type="url"
+        value={sponsorUrl}
+        onChange={(e) => setSponsorUrl(e.target.value)}
+        placeholder="Ссылка «Узнать подробнее» — https://..."
+        className="mt-2 w-full rounded-lg border border-black/10 p-2 text-sm"
+      />
       <div className="mt-2 flex items-center gap-2">
         <select
           value={mood}
@@ -66,7 +75,7 @@ export function SponsoredStickerForm() {
         </select>
         <button
           type="submit"
-          disabled={status === "sending" || !text.trim()}
+          disabled={status === "sending" || !text.trim() || !sponsorUrl.trim()}
           className="rounded-lg bg-[#2A2A2E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
         >
           {status === "sending" ? "..." : "Опубликовать"}

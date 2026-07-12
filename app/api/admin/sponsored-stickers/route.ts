@@ -12,7 +12,7 @@ const SPONSORED_SESSION_ID = "admin-sponsored";
 // Защищено HTTP Basic Auth в proxy.ts. Без модерации/rate limit — контент
 // уже проверен человеком (администратором) перед публикацией.
 export async function POST(request: Request) {
-  let body: { text?: unknown; mood?: unknown };
+  let body: { text?: unknown; mood?: unknown; sponsorUrl?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -21,12 +21,19 @@ export async function POST(request: Request) {
 
   const text = typeof body.text === "string" ? body.text.trim() : "";
   const mood = typeof body.mood === "string" ? (body.mood as Mood) : null;
+  const sponsorUrl = typeof body.sponsorUrl === "string" ? body.sponsorUrl.trim() : "";
 
   if (!text || text.length === 0 || text.length > MAX_LENGTH) {
     return NextResponse.json({ error: "Некорректный текст." }, { status: 400 });
   }
   if (!mood || !MOOD_MAP[mood]) {
     return NextResponse.json({ error: "Выберите настроение." }, { status: 400 });
+  }
+  if (!/^https?:\/\/.+/.test(sponsorUrl)) {
+    return NextResponse.json(
+      { error: "Укажите ссылку «Узнать подробнее» (начинается с http:// или https://)." },
+      { status: 400 }
+    );
   }
 
   const supabase = createAdminClient();
@@ -54,6 +61,7 @@ export async function POST(request: Request) {
       rotation: position.rotation,
       session_id: SPONSORED_SESSION_ID,
       is_sponsored: true,
+      sponsor_url: sponsorUrl,
     })
     .select()
     .single();

@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ModerationQueueItem } from "@/components/admin/ModerationQueueItem";
 import { PurchaseConfirmForm } from "@/components/admin/PurchaseConfirmForm";
 import { SponsoredStickerForm } from "@/components/admin/SponsoredStickerForm";
+import { SponsoredStickerItem } from "@/components/admin/SponsoredStickerItem";
 import type { Sticker } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,12 @@ export default async function AdminPage() {
 
   const stickerList: Sticker[] = stickers ?? [];
   const stickerIds = stickerList.map((s) => s.id);
+
+  const { data: sponsoredStickers } = await supabase
+    .from("stickers")
+    .select("*")
+    .eq("is_sponsored", true)
+    .order("created_at", { ascending: false });
 
   const reportsBySticker = new Map<string, { reason: string; created_at: string }[]>();
   if (stickerIds.length > 0) {
@@ -71,6 +78,16 @@ export default async function AdminPage() {
       <div className="mt-4 flex flex-col gap-4">
         <PurchaseConfirmForm />
         <SponsoredStickerForm />
+      </div>
+
+      <h1 className="mt-10 text-2xl font-extrabold text-[#2A2A2E]">Рекламные стикеры</h1>
+      <div className="mt-4 flex flex-col gap-4">
+        {(!sponsoredStickers || sponsoredStickers.length === 0) && (
+          <p className="text-sm text-[#8A8A92]">Пока ни одного не опубликовано.</p>
+        )}
+        {(sponsoredStickers ?? []).map((sticker) => (
+          <SponsoredStickerItem key={sticker.id} sticker={sticker} />
+        ))}
       </div>
     </div>
   );

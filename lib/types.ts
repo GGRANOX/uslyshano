@@ -15,6 +15,7 @@ export interface Sticker {
   rotation: number;
   decoration_id: string | null;
   is_sponsored: boolean;
+  sponsor_url: string | null;
   session_id: string;
   likes_count: number;
   report_count: number;
@@ -35,6 +36,7 @@ export interface PublicSticker {
   rotation: number;
   decoration_id: string | null;
   is_sponsored: boolean;
+  sponsor_url: string | null;
   is_hidden: boolean;
   created_at: string;
   expires_at: string;
