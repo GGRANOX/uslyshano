@@ -14,7 +14,7 @@ const MAX_ATTEMPTS = 30;
 // 3000x3000, иначе новая (пустая) доска выглядит как баг. Позиция внутри
 // этой области всё равно случайная, не сетка. После порога — обычный
 // разброс по всему холсту.
-const CENTER_CLUSTER_COUNT = 7;
+const CENTER_CLUSTER_COUNT = 13;
 const CENTER_CLUSTER_HALF_WIDTH = 500;
 const CENTER_CLUSTER_HALF_HEIGHT = 350;
 

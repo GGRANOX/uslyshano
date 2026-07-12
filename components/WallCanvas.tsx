@@ -37,14 +37,30 @@ const SPONSORED_RATIO = 15;
 const DRAG_THRESHOLD = 6; // px — меньше считаем кликом, не перетаскиванием
 const PAN_TRANSITION_MS = 500;
 
+// Зум колёсиком мыши — холст с карточками масштабируется как единое целое
+// (CSS transform: scale на том же слое, что и pan), в тех же границах-"стенках".
+const MIN_SCALE = 0.4;
+const MAX_SCALE = 2;
+const WHEEL_ZOOM_INTENSITY = 0.0015;
+
 interface Pan {
   x: number;
   y: number;
 }
 
-function clampPan(x: number, y: number, viewportWidth: number, viewportHeight: number): Pan {
-  const minX = Math.min(0, viewportWidth - CANVAS_WIDTH);
-  const minY = Math.min(0, viewportHeight - CANVAS_HEIGHT);
+function clampScale(scale: number): number {
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+}
+
+function clampPan(
+  x: number,
+  y: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  scale: number
+): Pan {
+  const minX = Math.min(0, viewportWidth - CANVAS_WIDTH * scale);
+  const minY = Math.min(0, viewportHeight - CANVAS_HEIGHT * scale);
   return {
     x: Math.min(0, Math.max(minX, x)),
     y: Math.min(0, Math.max(minY, y)),
@@ -61,6 +77,7 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
   );
   const [pendingLikes, setPendingLikes] = useState<Set<string>>(new Set());
   const [pan, setPan] = useState<Pan>({ x: 0, y: 0 });
+  const [scale, setScale] = useState(1);
   const [panTransition, setPanTransition] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
@@ -213,7 +230,8 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
           viewportSize.width / 2 - CANVAS_WIDTH / 2,
           viewportSize.height / 2 - CANVAS_HEIGHT / 2,
           viewportSize.width,
-          viewportSize.height
+          viewportSize.height,
+          1
         )
       );
     });
@@ -235,7 +253,37 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
       drag.moved = true;
       setIsDragging(true);
     }
-    setPan(clampPan(drag.originX + dx, drag.originY + dy, viewportSize.width, viewportSize.height));
+    setPan(
+      clampPan(drag.originX + dx, drag.originY + dy, viewportSize.width, viewportSize.height, scale)
+    );
+  }
+
+  // Зум колёсиком, с "фокусом" на курсоре — та же точка холста остаётся под
+  // курсором до и после. transform-origin у слоя холста стоит в 0 0 (см.
+  // JSX ниже), поэтому pan — это смещение в экранных px независимо от scale,
+  // а перевод экранных координат в координаты холста учитывает текущий scale.
+  function handleWheel(e: React.WheelEvent) {
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const cursorX = e.clientX - rect.left;
+    const cursorY = e.clientY - rect.top;
+
+    const newScale = clampScale(scale * (1 - e.deltaY * WHEEL_ZOOM_INTENSITY));
+    const canvasX = (cursorX - pan.x) / scale;
+    const canvasY = (cursorY - pan.y) / scale;
+
+    setScale(newScale);
+    setPanTransition(false);
+    setPan(
+      clampPan(
+        cursorX - canvasX * newScale,
+        cursorY - canvasY * newScale,
+        viewportSize.width,
+        viewportSize.height,
+        newScale
+      )
+    );
   }
 
   function handlePointerUp() {
@@ -261,10 +309,14 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
       viewportSize.width === 0 || viewportSize.height === 0
         ? allStickers // до первого измерения — рендерим всё
         : allStickers.filter((s) => {
-            const left = -pan.x - VIRTUALIZATION_BUFFER;
-            const right = -pan.x + viewportSize.width + VIRTUALIZATION_BUFFER;
-            const top = -pan.y - VIRTUALIZATION_BUFFER;
-            const bottom = -pan.y + viewportSize.height + VIRTUALIZATION_BUFFER;
+            // Границы видимой области в координатах холста (не экрана) —
+            // экран -> холст: (screen - pan) / scale, плюс запас-буфер тоже
+            // переводим в масштаб холста.
+            const buffer = VIRTUALIZATION_BUFFER / scale;
+            const left = -pan.x / scale - buffer;
+            const right = (-pan.x + viewportSize.width) / scale + buffer;
+            const top = -pan.y / scale - buffer;
+            const bottom = (-pan.y + viewportSize.height) / scale + buffer;
             return (
               s.position_x + CARD_WIDTH >= left &&
               s.position_x <= right &&
@@ -281,7 +333,7 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
       return inViewport;
     }
     return [...regular, ...sponsored.slice(0, sponsoredLimit)];
-  }, [allStickers, pan, viewportSize]);
+  }, [allStickers, pan, scale, viewportSize]);
 
   async function handleLike(id: string) {
     if (pendingLikes.has(id)) return;
@@ -371,10 +423,11 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
     setPanTransition(true);
     setPan(
       clampPan(
-        viewportSize.width / 2 - (sticker.position_x + CARD_WIDTH / 2),
-        viewportSize.height / 2 - (sticker.position_y + CARD_HEIGHT / 2),
+        viewportSize.width / 2 - (sticker.position_x + CARD_WIDTH / 2) * scale,
+        viewportSize.height / 2 - (sticker.position_y + CARD_HEIGHT / 2) * scale,
         viewportSize.width,
-        viewportSize.height
+        viewportSize.height,
+        scale
       )
     );
     setTimeout(() => setPanTransition(false), PAN_TRANSITION_MS);
@@ -402,13 +455,15 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onWheel={handleWheel}
       >
         <div
           className="absolute left-0 top-0"
           style={{
             width: CANVAS_WIDTH,
             height: CANVAS_HEIGHT,
-            transform: `translate(${pan.x}px, ${pan.y}px)`,
+            transformOrigin: "0 0",
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
             transition: panTransition ? `transform ${PAN_TRANSITION_MS}ms ease` : undefined,
           }}
         >

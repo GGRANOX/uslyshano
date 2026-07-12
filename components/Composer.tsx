@@ -2,11 +2,23 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { MOODS } from "@/lib/moods";
+import { MOODS, MOOD_MAP } from "@/lib/moods";
 import type { Mood, PublicSticker } from "@/lib/types";
 import type { DecorationInfo } from "@/lib/decorations";
 
 const MAX_LENGTH = 1000;
+
+// Нативный <option> не красится инлайн-стилями — цветной кружок-эмодзи как
+// приближение реального accent-цвета настроения (lib/moods.ts), чтобы в
+// выпадающем списке было видно соответствие цвет -> настроение (см. точку
+// на карточке в StickerCard). Точный hex показан отдельно рядом с select'ом.
+const MOOD_CIRCLE: Record<Mood, string> = {
+  happy: "🟡",
+  sad: "🔵",
+  angry: "🔴",
+  thoughtful: "🟣",
+  love: "🩷",
+};
 
 interface ComposerProps {
   onCreated: (sticker: PublicSticker) => void;
@@ -21,6 +33,9 @@ export function Composer({ onCreated }: ComposerProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  // Свёрнутая панель освобождает экран на телефоне — особенно нужно, когда
+  // просто листаешь стену, а не пишешь.
+  const [collapsed, setCollapsed] = useState(false);
 
   // Декорации доступны в композере, только если сессия уже что-то купила
   // (подтверждено администратором) — см. магазин декораций (кнопка 🎨).
@@ -84,12 +99,38 @@ export function Composer({ onCreated }: ComposerProps) {
     }
   }
 
+  if (collapsed) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 z-30 flex justify-center px-4 pb-4">
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          className="rounded-full bg-white/95 px-5 py-2.5 text-sm font-semibold text-[#2A2A2E] shadow-xl shadow-black/10 backdrop-blur hover:bg-white"
+        >
+          ✍️ Написать
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed bottom-0 left-0 right-0 z-30 flex justify-center px-4 pb-4">
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-2xl rounded-3xl bg-white/95 p-4 shadow-xl shadow-black/10 backdrop-blur"
       >
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            aria-label="Свернуть панель"
+            title="Свернуть"
+            className="-mt-1 mb-1 h-5 w-10 rounded-full text-[#8A8A92] hover:text-[#2A2A2E]"
+          >
+            ︿
+          </button>
+        </div>
+
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value.slice(0, MAX_LENGTH))}
@@ -100,17 +141,25 @@ export function Composer({ onCreated }: ComposerProps) {
 
         <div className="mt-2 flex items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <select
-              value={mood}
-              onChange={(e) => setMood(e.target.value as Mood)}
-              className="rounded-full bg-[#F1F0F5] px-3 py-1.5 text-sm outline-none"
-            >
-              {MOODS.map((m) => (
-                <option key={m.key} value={m.key}>
-                  {m.emoji} {m.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1.5 rounded-full bg-[#F1F0F5] pl-2.5">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: MOOD_MAP[mood].accent }}
+                aria-hidden
+                title="Цвет этого настроения на карточке"
+              />
+              <select
+                value={mood}
+                onChange={(e) => setMood(e.target.value as Mood)}
+                className="rounded-full bg-transparent py-1.5 pr-3 text-sm outline-none"
+              >
+                {MOODS.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {MOOD_CIRCLE[m.key]} {m.emoji} {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {ownedDecorations.length > 0 && (
               <select

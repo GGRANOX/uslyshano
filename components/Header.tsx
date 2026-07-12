@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 interface HeaderProps {
   count: number;
   onOpenShop: () => void;
@@ -15,6 +19,16 @@ export function Header({
   wallTheme,
   onToggleWallTheme,
 }: HeaderProps) {
+  // Кнопки действий свёрнуты в "⋯" по умолчанию — на маленьких экранах
+  // весь ряд из 5 пилюль не помещается / выглядит громоздко. Разворачиваются
+  // по нажатию, сворачиваются обратно после выбора действия.
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  function handleAction(action: () => void) {
+    action();
+    setMenuOpen(false);
+  }
+
   return (
     <div className="pointer-events-none fixed top-4 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
       <div className="flex items-center gap-2">
@@ -27,40 +41,55 @@ export function Header({
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenRandom}
-          className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/90 px-3 py-2.5 text-sm shadow-lg shadow-black/5 backdrop-blur hover:bg-white"
-          title="Случайный момент"
-        >
-          🎲
-        </button>
+        {menuOpen && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleAction(onOpenRandom)}
+              className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/90 px-3 py-2.5 text-sm shadow-lg shadow-black/5 backdrop-blur hover:bg-white"
+              title="Случайный момент"
+            >
+              🎲
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAction(onOpenShop)}
+              className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/90 px-3 py-2.5 text-sm shadow-lg shadow-black/5 backdrop-blur hover:bg-white"
+              title="Магазин декораций"
+            >
+              🎨
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAction(onOpenSupport)}
+              className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/90 px-3 py-2.5 text-sm shadow-lg shadow-black/5 backdrop-blur hover:bg-white"
+              title="Поддержать проект"
+            >
+              💛
+            </button>
+
+            <button
+              type="button"
+              onClick={onToggleWallTheme}
+              className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/90 px-3 py-2.5 text-sm shadow-lg shadow-black/5 backdrop-blur hover:bg-white"
+              title={wallTheme === "dark" ? "Светлый холст" : "Тёмный холст"}
+            >
+              {wallTheme === "dark" ? "☀️" : "🌙"}
+            </button>
+          </>
+        )}
 
         <button
           type="button"
-          onClick={onOpenShop}
+          onClick={() => setMenuOpen((v) => !v)}
           className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/90 px-3 py-2.5 text-sm shadow-lg shadow-black/5 backdrop-blur hover:bg-white"
-          title="Магазин декораций"
+          aria-label={menuOpen ? "Скрыть меню" : "Ещё"}
+          aria-expanded={menuOpen}
+          title={menuOpen ? "Скрыть" : "Ещё"}
         >
-          🎨
-        </button>
-
-        <button
-          type="button"
-          onClick={onOpenSupport}
-          className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/90 px-3 py-2.5 text-sm shadow-lg shadow-black/5 backdrop-blur hover:bg-white"
-          title="Поддержать проект"
-        >
-          💛
-        </button>
-
-        <button
-          type="button"
-          onClick={onToggleWallTheme}
-          className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/90 px-3 py-2.5 text-sm shadow-lg shadow-black/5 backdrop-blur hover:bg-white"
-          title={wallTheme === "dark" ? "Светлый холст" : "Тёмный холст"}
-        >
-          {wallTheme === "dark" ? "☀️" : "🌙"}
+          {menuOpen ? "✕" : "⋯"}
         </button>
       </div>
 
