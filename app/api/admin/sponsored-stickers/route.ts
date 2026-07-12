@@ -2,12 +2,10 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { pickStickerPosition } from "@/lib/layout";
 import { MOOD_MAP } from "@/lib/moods";
+import { SPONSORED_SESSION_ID } from "@/lib/session";
 import type { Mood } from "@/lib/types";
 
 const MAX_LENGTH = 1000;
-// Спонсорские стикеры вставляются вручную админом, без своего session-токена
-// (ТЗ раздел 6, Фаза 3: "первые 3-5 партнёров", самообслуживания не строим).
-const SPONSORED_SESSION_ID = "admin-sponsored";
 
 // Защищено HTTP Basic Auth в proxy.ts. Без модерации/rate limit — контент
 // уже проверен человеком (администратором) перед публикацией.
