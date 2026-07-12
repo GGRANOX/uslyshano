@@ -30,13 +30,17 @@ export function Header({
   }
 
   return (
-    <div className="pointer-events-none fixed top-4 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
-      <div className="flex items-center gap-2">
-        <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-white/90 px-5 py-2.5 shadow-lg shadow-black/5 backdrop-blur">
-          <span className="text-lg font-extrabold tracking-tight text-[#2A2A2E]">
+    <div className="pointer-events-none fixed top-4 left-1/2 z-30 flex w-full max-w-[92vw] -translate-x-1/2 flex-col items-center gap-2">
+      {/* flex-wrap — при разворачивании "⋯" ряд кнопок не должен становиться
+          шире экрана: это раньше выталкивало "Услышано" за левый край
+          (весь блок центрируется по СВОЕЙ ширине через left-1/2+translate,
+          поэтому переполнение обрезало текст с обеих сторон). */}
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <div className="pointer-events-auto flex shrink-0 items-center gap-3 rounded-full bg-white/90 px-5 py-2.5 shadow-lg shadow-black/5 backdrop-blur">
+          <span className="shrink-0 text-lg font-extrabold tracking-tight text-[#2A2A2E]">
             Услышано
           </span>
-          <span className="rounded-full bg-[#F1F0F5] px-3 py-1 text-xs font-semibold text-[#6B6B72]">
+          <span className="shrink-0 rounded-full bg-[#F1F0F5] px-3 py-1 text-xs font-semibold text-[#6B6B72]">
             сообщения {count}
           </span>
         </div>

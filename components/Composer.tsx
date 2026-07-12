@@ -209,7 +209,7 @@ export function Composer({ onCreated }: ComposerProps) {
           <p className="mt-2 text-xs text-[#1f7a3f]">{successMessage}</p>
         )}
 
-        <p className="mt-2 text-[11px] text-[#8A8A92]">
+        <p className="mt-2 break-words text-[11px] text-[#8A8A92]">
           Публикуя сообщение, вы подтверждаете, что вам есть 16 лет, и
           соглашаетесь с{" "}
           <Link href="/terms" className="underline hover:text-[#2A2A2E]">

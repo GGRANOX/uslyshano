@@ -18,8 +18,11 @@ interface StickerCardProps {
   onReport: (id: string, reason: ReportReasonKey) => Promise<void>;
   decorationStyleKey: DecorationStyleKey | null;
   /** 'wall' (по умолчанию) — абсолютное позиционирование на холсте.
-   * 'standalone' — обычный блок по центру родителя (см. RandomStickerModal). */
-  variant?: "wall" | "standalone";
+   * 'standalone' — обычный блок по центру родителя, без наклона (см.
+   * RandomStickerModal). 'list' — обычный поток, с наклоном, как на
+   * холсте, но без абсолютных координат (мобильная раскладка < 640px,
+   * см. WallCanvas). */
+  variant?: "wall" | "standalone" | "list";
   /** Переопределяет поведение кнопки "Поделиться" (используется для
    * генерации картинки в "Рандомном листе" вместо копирования ссылки). */
   onShareOverride?: () => void;
@@ -111,6 +114,7 @@ export function StickerCard({
 
   const decorationVisual = getDecorationVisual(decorationStyleKey);
   const isWall = variant === "wall";
+  const showRotation = variant !== "standalone";
 
   return (
     <div
@@ -128,10 +132,11 @@ export function StickerCard({
         top: isWall ? sticker.position_y : undefined,
         width: isWall ? CARD_WIDTH : undefined,
         backgroundColor: sticker.is_sponsored ? "#FDFCFA" : isFading ? CARD_BG_AGED : CARD_BG,
-        // Наклон — часть облика холста ("живая доска"); в "Рандомном
-        // листе" (variant="standalone") карточка на отдельном экране, там
-        // ровнее читается без наклона.
-        transform: isWall ? `rotate(${sticker.rotation}deg)` : undefined,
+        // Наклон — часть облика холста ("живая доска"), сохраняется и в
+        // мобильном списке (variant="list"); в "Рандомном листе"
+        // (variant="standalone") карточка на отдельном экране, там ровнее
+        // читается без наклона.
+        transform: showRotation ? `rotate(${sticker.rotation}deg)` : undefined,
         ...decorationVisual.style,
       }}
     >

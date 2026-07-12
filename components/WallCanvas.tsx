@@ -89,6 +89,10 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
   const [randomOpen, setRandomOpen] = useState(false);
   const [mySessionId, setMySessionId] = useState<string | null>(null);
   const [wallTheme, setWallTheme] = useState<WallTheme>("dark");
+  // На узких экранах (< 640px) абсолютные x/y холста не помещаются по
+  // ширине и требуют горизонтального скролла — вместо этого показываем
+  // обычный список в один столбец (без pan/zoom, он там и не нужен).
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(
     null
@@ -108,6 +112,16 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
         // localStorage недоступен — остаёмся на теме по умолчанию
       }
     });
+  }, []);
+
+  // Промис для первого чтения (react-hooks/set-state-in-effect); сам
+  // listener — нормальная подписка на внешнее событие (изменение ширины).
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const update = () => setIsMobileLayout(mq.matches);
+    Promise.resolve().then(update);
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
   }, []);
 
   function toggleWallTheme() {
@@ -216,6 +230,13 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, [measure]);
+
+  // Если ширина экрана пересекла границу мобильной раскладки и мы
+  // вернулись на холст — контейнер с ref смонтировался заново, нужно
+  // перемерить (иначе pan/scale остались бы привязаны к старым 0x0).
+  useEffect(() => {
+    if (!isMobileLayout) Promise.resolve().then(measure);
+  }, [isMobileLayout, measure]);
 
   // Стартовая позиция — центр холста, чтобы при первом визите было видно
   // стикеры со всех сторон, а не только пустой левый верхний угол. setState
@@ -447,49 +468,78 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
         onToggleWallTheme={toggleWallTheme}
       />
 
-      <div
-        ref={containerRef}
-        className={`relative flex-1 overflow-hidden ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
-        style={{ touchAction: "none" }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onWheel={handleWheel}
-      >
-        <div
-          className="absolute left-0 top-0"
-          style={{
-            width: CANVAS_WIDTH,
-            height: CANVAS_HEIGHT,
-            transformOrigin: "0 0",
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
-            transition: panTransition ? `transform ${PAN_TRANSITION_MS}ms ease` : undefined,
-          }}
-        >
-          {visibleStickers.map((sticker) => (
-            <StickerCard
-              key={sticker.id}
-              sticker={sticker}
-              onLike={handleLike}
-              likePending={pendingLikes.has(sticker.id)}
-              onReport={handleReport}
-              onDelete={handleDelete}
-              decorationStyleKey={
-                sticker.decoration_id ? decorationStyles.get(sticker.decoration_id) ?? null : null
-              }
-            />
-          ))}
+      {isMobileLayout ? (
+        <div className="flex-1 overflow-y-auto px-4 pt-24 pb-40">
+          <div className="mx-auto flex max-w-sm flex-col gap-5">
+            {allStickers.map((sticker) => (
+              <StickerCard
+                key={sticker.id}
+                sticker={sticker}
+                variant="list"
+                onLike={handleLike}
+                likePending={pendingLikes.has(sticker.id)}
+                onReport={handleReport}
+                onDelete={handleDelete}
+                decorationStyleKey={
+                  sticker.decoration_id ? decorationStyles.get(sticker.decoration_id) ?? null : null
+                }
+              />
+            ))}
+            {allStickers.length === 0 && (
+              <p
+                className="mt-16 text-center text-sm"
+                style={{ color: wallTheme === "dark" ? WALL_TEXT_MUTED_DARK : WALL_TEXT_MUTED_LIGHT }}
+              >
+                Пока пусто — повесьте первый стикер
+              </p>
+            )}
+          </div>
         </div>
-        {allStickers.length === 0 && (
-          <p
-            className="pointer-events-none absolute left-1/2 top-1/2 max-w-xs -translate-x-1/2 -translate-y-1/2 text-center text-sm"
-            style={{ color: wallTheme === "dark" ? WALL_TEXT_MUTED_DARK : WALL_TEXT_MUTED_LIGHT }}
+      ) : (
+        <div
+          ref={containerRef}
+          className={`relative flex-1 overflow-hidden ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+          style={{ touchAction: "none" }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onWheel={handleWheel}
+        >
+          <div
+            className="absolute left-0 top-0"
+            style={{
+              width: CANVAS_WIDTH,
+              height: CANVAS_HEIGHT,
+              transformOrigin: "0 0",
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+              transition: panTransition ? `transform ${PAN_TRANSITION_MS}ms ease` : undefined,
+            }}
           >
-            Пока пусто — повесьте первый стикер
-          </p>
-        )}
-      </div>
+            {visibleStickers.map((sticker) => (
+              <StickerCard
+                key={sticker.id}
+                sticker={sticker}
+                onLike={handleLike}
+                likePending={pendingLikes.has(sticker.id)}
+                onReport={handleReport}
+                onDelete={handleDelete}
+                decorationStyleKey={
+                  sticker.decoration_id ? decorationStyles.get(sticker.decoration_id) ?? null : null
+                }
+              />
+            ))}
+          </div>
+          {allStickers.length === 0 && (
+            <p
+              className="pointer-events-none absolute left-1/2 top-1/2 max-w-xs -translate-x-1/2 -translate-y-1/2 text-center text-sm"
+              style={{ color: wallTheme === "dark" ? WALL_TEXT_MUTED_DARK : WALL_TEXT_MUTED_LIGHT }}
+            >
+              Пока пусто — повесьте первый стикер
+            </p>
+          )}
+        </div>
+      )}
 
       <Composer onCreated={handleCreated} />
 
