@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { toPublicSticker } from "@/lib/publicSticker";
+import { isUuid } from "@/lib/ids";
 import { SESSION_COOKIE, generateSessionId } from "@/lib/session";
 import type { Sticker } from "@/lib/types";
 
@@ -11,7 +12,11 @@ import type { Sticker } from "@/lib/types";
 // не пройден целиком.
 export async function GET(request: Request) {
   const excludeParam = new URL(request.url).searchParams.get("exclude");
-  const excludeIds = excludeParam ? excludeParam.split(",").filter(Boolean) : null;
+  // Только корректные uuid (мусор в параметре раньше ронял RPC с 500) и не
+  // больше MAX_EXCLUDE — на случай очень длинного "круга".
+  const MAX_EXCLUDE = 500;
+  const parsedIds = excludeParam ? excludeParam.split(",").filter(isUuid).slice(-MAX_EXCLUDE) : [];
+  const excludeIds = parsedIds.length > 0 ? parsedIds : null;
 
   const cookieStore = await cookies();
   let sessionId = cookieStore.get(SESSION_COOKIE)?.value;

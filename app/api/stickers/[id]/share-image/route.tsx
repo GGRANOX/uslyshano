@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isUuid } from "@/lib/ids";
 import { MOOD_MAP, CARD_BG, CARD_TEXT } from "@/lib/moods";
 import type { Mood } from "@/lib/types";
 
@@ -24,11 +25,15 @@ export async function GET(
   const { id } = await params;
 
   const supabase = createAdminClient();
-  const { data: sticker } = await supabase
-    .from("stickers")
-    .select("text, mood, is_hidden, expires_at")
-    .eq("id", id)
-    .maybeSingle();
+  // Некорректный id — сразу "стикер исчез", без запроса (иначе Postgres
+  // падает на разборе uuid).
+  const { data: sticker } = isUuid(id)
+    ? await supabase
+        .from("stickers")
+        .select("text, mood, is_hidden, expires_at")
+        .eq("id", id)
+        .maybeSingle()
+    : { data: null };
 
   const isGone =
     !sticker || sticker.is_hidden || new Date(sticker.expires_at).getTime() < Date.now();

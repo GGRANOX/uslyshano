@@ -22,8 +22,12 @@ export default async function Home() {
     .select("*")
     .eq("is_hidden", false)
     .gt("expires_at", new Date().toISOString())
-    .order("created_at", { ascending: true })
+    // Самые свежие 500, а не самые старые: при ascending + limit новые
+    // стикеры после 500-го просто не попадали на стену после перезагрузки.
+    // Порядок отрисовки (старые снизу) восстанавливаем ниже через reverse().
+    .order("created_at", { ascending: false })
     .limit(500);
+  stickers?.reverse();
 
   if (error) {
     console.error("Failed to load stickers", error);

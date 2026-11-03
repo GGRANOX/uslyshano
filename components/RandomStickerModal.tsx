@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { StickerCard } from "./StickerCard";
 import type { StickerWithLikedState } from "@/lib/types";
 import type { ReportReasonKey } from "@/lib/reportReasons";
+import { getTurnstileToken } from "@/lib/turnstileClient";
 import type { DecorationStyleKey } from "@/lib/decorations";
 
 interface RandomStickerModalProps {
@@ -145,28 +146,46 @@ export function RandomStickerModal({ open, onClose }: RandomStickerModalProps) {
     if (!removedId) return;
     seenInCycleRef.current.delete(removedId);
 
-    let needsFetch = false;
-    setNav((prev) => {
-      const idx = prev.history.findIndex((s) => s.id === removedId);
-      if (idx === -1) return prev;
-      const history = [...prev.history.slice(0, idx), ...prev.history.slice(idx + 1)];
-      if (idx < history.length) {
-        return { history, index: idx };
-      }
-      needsFetch = true;
-      return { history, index: history.length - 1 };
-    });
+    // Считаем по текущему nav, а не внутри updater'а setNav: React выполняет
+    // updater не сразу, поэтому флаг "нужно догрузить", выставленный внутри
+    // него, мог быть ещё false — и после удаления последнего стикера в
+    // истории модалка оставалась пустой.
+    const idx = nav.history.findIndex((s) => s.id === removedId);
+    if (idx === -1) return;
+    const history = [...nav.history.slice(0, idx), ...nav.history.slice(idx + 1)];
 
-    if (needsFetch) {
-      await loadNext();
+    if (idx < history.length) {
+      setNav({ history, index: idx });
+      return;
+    }
+
+    // Удалили последний в истории — нужен новый с сервера.
+    setNav({ history, index: history.length - 1 });
+    setLoading(true);
+    try {
+      let result = await fetchRandom(Array.from(seenInCycleRef.current));
+      if (!result && seenInCycleRef.current.size > 0) {
+        seenInCycleRef.current = new Set();
+        result = await fetchRandom([]);
+      }
+      if (result && result.id !== removedId) {
+        seenInCycleRef.current.add(result.id);
+        setNav({ history: [...history, result], index: history.length });
+      } else if (history.length === 0) {
+        setEmpty(true);
+      }
+    } finally {
+      setLoading(false);
     }
   }
 
   async function handleReport(id: string, reason: ReportReasonKey) {
+    // Бросает при сбое проверки — StickerCard покажет ошибку жалобы.
+    const turnstileToken = await getTurnstileToken();
     const response = await fetch(`/api/stickers/${id}/report`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason, turnstileToken }),
     });
     if (!response.ok) {
       throw new Error("report failed");

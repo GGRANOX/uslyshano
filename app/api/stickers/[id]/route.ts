@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SESSION_COOKIE } from "@/lib/session";
+import { isUuid } from "@/lib/ids";
 
 // Автор может удалить только свой стикер (session_id должен совпасть) — в
 // отличие от /api/admin/stickers/[id], который защищён Basic Auth и может
@@ -11,6 +12,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: stickerId } = await params;
+  if (!isUuid(stickerId)) {
+    return NextResponse.json({ error: "Стикер не найден." }, { status: 404 });
+  }
 
   const cookieStore = await cookies();
   const sessionId = cookieStore.get(SESSION_COOKIE)?.value;

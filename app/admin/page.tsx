@@ -8,6 +8,28 @@ import type { Sticker } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+const PAGE_SIZE = 1000;
+const MAX_ROWS = 50_000; // предохранитель — дальше нужна агрегирующая RPC
+
+async function fetchAllSessionIds(
+  page: (
+    from: number,
+    to: number
+  ) => PromiseLike<{ data: { session_id: string }[] | null; error: unknown }>
+): Promise<{ session_id: string }[]> {
+  const rows: { session_id: string }[] = [];
+  for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error) {
+      console.error("Admin: session activity page failed", error);
+      break;
+    }
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
 // Доступ защищён HTTP Basic Auth в proxy.ts — сюда не попадёт никто без
 // пароля ADMIN_PASSWORD (ТЗ раздел 6, Фаза 2: "простая админ-панель...
 // для просмотра и удаления жалоб/нарушений").
@@ -40,20 +62,27 @@ export default async function AdminPage() {
   // сколько всего разных "куки" вообще что-то делали, и сколько постов/
   // реакций на каждую приходится. Считаем в JS, а не SQL group by — на
   // масштабе MVP таблицы маленькие, а так не нужна отдельная миграция/RPC.
-  const { data: allStickerSessions } = await supabase
-    .from("stickers")
-    .select("session_id")
-    .neq("session_id", SPONSORED_SESSION_ID);
-  const { data: allReactionSessions } = await supabase
-    .from("reactions")
-    .select("session_id");
+  //
+  // Постранично: PostgREST по умолчанию отдаёт не больше 1000 строк за
+  // запрос, и без этого счётчики молча обрезались на 1000-й записи.
+  const allStickerSessions = await fetchAllSessionIds((from, to) =>
+    supabase
+      .from("stickers")
+      .select("session_id")
+      .neq("session_id", SPONSORED_SESSION_ID)
+      .order("id")
+      .range(from, to)
+  );
+  const allReactionSessions = await fetchAllSessionIds((from, to) =>
+    supabase.from("reactions").select("session_id").order("id").range(from, to)
+  );
 
   const postCounts = new Map<string, number>();
-  for (const row of allStickerSessions ?? []) {
+  for (const row of allStickerSessions) {
     postCounts.set(row.session_id, (postCounts.get(row.session_id) ?? 0) + 1);
   }
   const reactionCounts = new Map<string, number>();
-  for (const row of allReactionSessions ?? []) {
+  for (const row of allReactionSessions) {
     reactionCounts.set(row.session_id, (reactionCounts.get(row.session_id) ?? 0) + 1);
   }
 

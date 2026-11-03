@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isUuid } from "@/lib/ids";
 
 // Защищено HTTP Basic Auth в proxy.ts (matcher покрывает /api/admin/**).
 const VALID_ACTIONS = ["approve", "hide", "delete"] as const;
@@ -10,6 +11,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: "Стикер не найден." }, { status: 404 });
+  }
 
   let body: { action?: unknown };
   try {
