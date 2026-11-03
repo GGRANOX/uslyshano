@@ -7,6 +7,8 @@ import { pickStickerPosition } from "@/lib/layout";
 import { MOOD_MAP } from "@/lib/moods";
 import { SESSION_COOKIE, generateSessionId } from "@/lib/session";
 import { toPublicSticker } from "@/lib/publicSticker";
+import { hitIpLimit } from "@/lib/ipRateLimit";
+import { verifyTurnstile } from "@/lib/turnstile";
 import type { Mood } from "@/lib/types";
 
 const MAX_LENGTH = 1000;
@@ -17,6 +19,7 @@ export async function POST(request: Request) {
     mood?: unknown;
     decorationId?: unknown;
     allowFeature?: unknown;
+    turnstileToken?: unknown;
   };
   try {
     body = await request.json();
@@ -55,6 +58,20 @@ export async function POST(request: Request) {
     });
   }
 
+  const turnstile = await verifyTurnstile(body.turnstileToken, request);
+  if (turnstile === "failed") {
+    return NextResponse.json(
+      { error: "Не удалось подтвердить, что вы не робот. Попробуйте ещё раз." },
+      { status: 403 }
+    );
+  }
+  if (turnstile === "error") {
+    return NextResponse.json(
+      { error: "Сервис временно недоступен, попробуйте через минуту." },
+      { status: 503 }
+    );
+  }
+
   const supabase = createAdminClient();
 
   let rateLimited: boolean;
@@ -72,6 +89,22 @@ export async function POST(request: Request) {
       {
         error: `Слишком много сообщений подряд — не больше ${POSTS_PER_HOUR_LIMIT} в час. Попробуйте позже.`,
       },
+      { status: 429 }
+    );
+  }
+
+  // Лимит по IP — после лимита по сессии: обычный пользователь упрётся в
+  // сессионный раньше, а этот ловит скрипты, которые не присылают cookie.
+  const ipLimit = await hitIpLimit(supabase, request, "post");
+  if (ipLimit === "error") {
+    return NextResponse.json(
+      { error: "Сервис временно недоступен, попробуйте через минуту." },
+      { status: 503 }
+    );
+  }
+  if (ipLimit === "limited") {
+    return NextResponse.json(
+      { error: "Слишком много сообщений из вашей сети. Попробуйте позже." },
       { status: 429 }
     );
   }

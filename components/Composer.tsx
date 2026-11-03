@@ -5,6 +5,7 @@ import Link from "next/link";
 import { MOODS, MOOD_MAP } from "@/lib/moods";
 import type { Mood, PublicSticker } from "@/lib/types";
 import type { DecorationInfo } from "@/lib/decorations";
+import { getTurnstileToken } from "@/lib/turnstileClient";
 
 const MAX_LENGTH = 1000;
 
@@ -68,6 +69,14 @@ export function Composer({ onCreated }: ComposerProps) {
     setSuccessMessage(null);
 
     try {
+      let turnstileToken: string | null;
+      try {
+        turnstileToken = await getTurnstileToken();
+      } catch {
+        setError("Не удалось пройти проверку «я не робот». Обновите страницу и попробуйте ещё раз.");
+        return;
+      }
+
       const response = await fetch("/api/stickers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,6 +85,7 @@ export function Composer({ onCreated }: ComposerProps) {
           mood,
           decorationId: decorationId || null,
           allowFeature,
+          turnstileToken,
         }),
       });
 

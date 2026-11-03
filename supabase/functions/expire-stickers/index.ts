@@ -39,6 +39,17 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Заодно чистим события лимитов по IP старше суток (миграция 0010) —
+  // они нужны только для окна в 1 час. Ошибка тут не критична.
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { error: cleanupError } = await supabase
+    .from("rate_limit_events")
+    .delete()
+    .lt("created_at", dayAgo);
+  if (cleanupError) {
+    console.error("expire-stickers: rate_limit_events cleanup failed", cleanupError);
+  }
+
   const deletedCount = data?.length ?? 0;
   console.log(`expire-stickers: удалено ${deletedCount} стикеров`);
 

@@ -24,7 +24,7 @@ Realtime), OpenAI Moderation API, `next/og` (генерация картинок
 
 1. Создайте проект на [supabase.com](https://supabase.com) (бесплатный тариф).
 2. В SQL Editor выполните по очереди все миграции из `supabase/migrations/`
-   (`0001` … `0009`) — создадут таблицы, RLS-политики и RPC-функции
+   (`0001` … `0010`) — создадут таблицы, RLS-политики и RPC-функции
    (`like_sticker`, `report_sticker`, `get_random_sticker`).
 3. Realtime должен быть включён для таблицы `stickers` (Database ->
    Replication -> `stickers` -> вкл.).
@@ -46,6 +46,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...   # только сервер, не NEXT_PUBLIC_!
 OPENAI_API_KEY=...
 ADMIN_PASSWORD=...              # пароль для /admin (HTTP Basic Auth)
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=... # капча Cloudflare Turnstile (в продакшене обязательно)
+TURNSTILE_SECRET_KEY=...        # только сервер
+IP_HASH_SECRET=...              # секрет для хэша IP в лимитах (openssl rand -hex 32)
 NEXT_PUBLIC_KASPI_PHONE=...     # опционально — реквизиты для магазина/поддержки
 NEXT_PUBLIC_KASPI_QR_URL=...    # опционально — путь к QR-картинке в /public
 ```
@@ -145,6 +148,7 @@ supabase/
   migrations/0008_sponsor_url.sql      — ссылка "Узнать подробнее" у спонсорских стикеров
   migrations/0009_lock_down_private_columns.sql — anon читает только публичные колонки;
                                          одна жалоба на сессию на стикер
+  migrations/0010_ip_rate_limits.sql   — лимиты по IP (хэш с дневной ротацией), RPC hit_rate_limit
   functions/expire-stickers/           — Edge Function для автоудаления
 ```
 
@@ -174,6 +178,17 @@ anon, authenticated;`. Из-за этого Realtime больше не знае�
 
 ## Модерация и защита (Фаза 2)
 
+- **Лимиты по IP** (`lib/ipRateLimit.ts`, миграция `0010`) поверх лимитов
+  по сессии — сессия это просто cookie, скрипт без неё получает новую на
+  каждый запрос. Мягкие (30 постов, 30 жалоб, 300 реакций в час с IP), т.к.
+  мобильные операторы в РК выводят много абонентов через один IP. Хранится
+  не IP, а HMAC-хэш с дневной ротацией; события старше суток удаляются.
+  `x-forwarded-for` берётся как есть — на Vercel его выставляет платформа,
+  на другом хостинге проверьте, что прокси его перезаписывает.
+- **Cloudflare Turnstile** (`lib/turnstile.ts`, `lib/turnstileClient.ts`) —
+  невидимая капча при публикации и жалобе. Включается переменной
+  `TURNSTILE_SECRET_KEY`; без неё проверка пропускается (для локальной
+  разработки). Если Cloudflare недоступен — запрос отклоняется (503).
 - **Rate limit работает fail-closed**: если проверка лимита в БД упала,
   публикация отклоняется с 503, а не пропускается.
 - **Порядок проверки** при создании стикера: длина -> rate limit (не больше

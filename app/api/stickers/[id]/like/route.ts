@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SESSION_COOKIE, generateSessionId } from "@/lib/session";
+import { isUuid } from "@/lib/ids";
+import { hitIpLimit } from "@/lib/ipRateLimit";
 
 // Один лайк на сессию на стикер (ТЗ раздел 6, Фаза 1). Уникальность
 // гарантирует БД (unique (sticker_id, session_id) в таблице reactions),
@@ -11,6 +13,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: stickerId } = await params;
+  if (!isUuid(stickerId)) {
+    return NextResponse.json({ error: "Стикер не найден." }, { status: 404 });
+  }
 
   const cookieStore = await cookies();
   let sessionId = cookieStore.get(SESSION_COOKIE)?.value;
@@ -27,16 +32,39 @@ export async function POST(
 
   const supabase = createAdminClient();
 
-  const { data: sticker } = await supabase
+  // Только видимые стикеры: раньше несуществующий id ронял like_sticker
+  // (внешний ключ) с 500, а скрытый/истёкший можно было "лайкать" вслепую.
+  const { data: sticker, error: stickerError } = await supabase
     .from("stickers")
     .select("session_id")
     .eq("id", stickerId)
+    .eq("is_hidden", false)
+    .gt("expires_at", new Date().toISOString())
     .maybeSingle();
 
-  if (sticker?.session_id === sessionId) {
+  if (stickerError) {
+    console.error("Like: sticker lookup failed", stickerError);
+    return NextResponse.json({ error: "Не удалось поставить лайк." }, { status: 503 });
+  }
+  if (!sticker) {
+    return NextResponse.json({ error: "Стикер не найден." }, { status: 404 });
+  }
+
+  if (sticker.session_id === sessionId) {
     return NextResponse.json(
       { error: "Нельзя отметить «Услышал(а)» на собственном стикере." },
       { status: 403 }
+    );
+  }
+
+  const ipLimit = await hitIpLimit(supabase, request, "like");
+  if (ipLimit === "error") {
+    return NextResponse.json({ error: "Не удалось поставить лайк." }, { status: 503 });
+  }
+  if (ipLimit === "limited") {
+    return NextResponse.json(
+      { error: "Слишком много реакций из вашей сети. Попробуйте позже." },
+      { status: 429 }
     );
   }
 

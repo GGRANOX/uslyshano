@@ -13,6 +13,7 @@ import { OnboardingModal } from "./OnboardingModal";
 import { toPublicSticker } from "@/lib/publicSticker";
 import type { PublicSticker, Sticker, StickerWithLikedState } from "@/lib/types";
 import type { ReportReasonKey } from "@/lib/reportReasons";
+import { getTurnstileToken } from "@/lib/turnstileClient";
 import type { DecorationStyleKey } from "@/lib/decorations";
 import {
   WALL_BG_DARK,
@@ -404,10 +405,12 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
   }
 
   async function handleReport(id: string, reason: ReportReasonKey) {
+    // Бросает при сбое проверки — StickerCard покажет ошибку жалобы.
+    const turnstileToken = await getTurnstileToken();
     const response = await fetch(`/api/stickers/${id}/report`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason, turnstileToken }),
     });
 
     if (!response.ok) {

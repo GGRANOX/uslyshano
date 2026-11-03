@@ -3,6 +3,9 @@ import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isValidReportReason } from "@/lib/reportReasons";
 import { SESSION_COOKIE } from "@/lib/session";
+import { isUuid } from "@/lib/ids";
+import { hitIpLimit } from "@/lib/ipRateLimit";
+import { verifyTurnstile } from "@/lib/turnstile";
 
 // Не больше стольких жалоб с одной сессии в час — защита от "зачистки" стены
 // скриптом. Обычному человеку столько не нужно.
@@ -17,8 +20,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: stickerId } = await params;
+  if (!isUuid(stickerId)) {
+    return NextResponse.json({ error: "Стикер не найден." }, { status: 404 });
+  }
 
-  let body: { reason?: unknown };
+  let body: { reason?: unknown; turnstileToken?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -41,7 +47,35 @@ export async function POST(
     );
   }
 
+  const turnstile = await verifyTurnstile(body.turnstileToken, request);
+  if (turnstile === "failed") {
+    return NextResponse.json(
+      { error: "Не удалось подтвердить, что вы не робот. Попробуйте ещё раз." },
+      { status: 403 }
+    );
+  }
+  if (turnstile === "error") {
+    return NextResponse.json({ error: "Не удалось отправить жалобу." }, { status: 503 });
+  }
+
   const supabase = createAdminClient();
+
+  // Жаловаться можно только на то, что реально висит на стене. Раньше
+  // несуществующий id ронял RPC (нарушение внешнего ключа) с 500.
+  const { data: sticker, error: stickerError } = await supabase
+    .from("stickers")
+    .select("id")
+    .eq("id", stickerId)
+    .eq("is_hidden", false)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (stickerError) {
+    console.error("Report: sticker lookup failed", stickerError);
+    return NextResponse.json({ error: "Не удалось отправить жалобу." }, { status: 503 });
+  }
+  if (!sticker) {
+    return NextResponse.json({ error: "Стикер не найден." }, { status: 404 });
+  }
 
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const { count, error: countError } = await supabase
@@ -57,6 +91,17 @@ export async function POST(
   if ((count ?? 0) >= REPORTS_PER_HOUR_LIMIT) {
     return NextResponse.json(
       { error: "Слишком много жалоб подряд. Попробуйте позже." },
+      { status: 429 }
+    );
+  }
+
+  const ipLimit = await hitIpLimit(supabase, request, "report");
+  if (ipLimit === "error") {
+    return NextResponse.json({ error: "Не удалось отправить жалобу." }, { status: 503 });
+  }
+  if (ipLimit === "limited") {
+    return NextResponse.json(
+      { error: "Слишком много жалоб из вашей сети. Попробуйте позже." },
       { status: 429 }
     );
   }
