@@ -24,7 +24,7 @@ Realtime), OpenAI Moderation API, `next/og` (генерация картинок
 
 1. Создайте проект на [supabase.com](https://supabase.com) (бесплатный тариф).
 2. В SQL Editor выполните по очереди все миграции из `supabase/migrations/`
-   (`0001` … `0005`) — создадут таблицы, RLS-политики и RPC-функции
+   (`0001` … `0009`) — создадут таблицы, RLS-политики и RPC-функции
    (`like_sticker`, `report_sticker`, `get_random_sticker`).
 3. Realtime должен быть включён для таблицы `stickers` (Database ->
    Replication -> `stickers` -> вкл.).
@@ -122,7 +122,6 @@ components/
   admin/SponsoredStickerForm.tsx  — форма публикации спонсорского стикера
 lib/
   supabase/admin.ts   — service role client (server-only)
-  supabase/public.ts  — anon client для Server Components
   supabase/client.ts  — anon client для браузера (realtime)
   types.ts            — Sticker (полная строка, только сервер) vs PublicSticker (для браузера)
   publicSticker.ts     — toPublicSticker(): единственное место, где Sticker -> PublicSticker
@@ -141,6 +140,11 @@ supabase/
   migrations/0003_decorations_shop.sql — публичное чтение decorations (Фаза 3)
   migrations/0004_random_sticker.sql   — RPC get_random_sticker ("Рандомный лист")
   migrations/0005_feature_consent.sql  — колонка allow_feature (согласие на подборку)
+  migrations/0006_fix_like_sticker_ambiguous_column.sql — фикс like_sticker
+  migrations/0007_random_sticker_exclude_many.sql — "Рандомный лист" без повторов в круге
+  migrations/0008_sponsor_url.sql      — ссылка "Узнать подробнее" у спонсорских стикеров
+  migrations/0009_lock_down_private_columns.sql — anon читает только публичные колонки;
+                                         одна жалоба на сессию на стикер
   functions/expire-stickers/           — Edge Function для автоудаления
 ```
 
@@ -155,18 +159,30 @@ create доверяют ему напрямую), поэтому он **нико
 только `has_reactions` (булево), и то лишь когда стикер принадлежит текущей
 сессии (`is_own`) — публичного счётчика лайков в интерфейсе нет нигде.
 
+Эта граница держится и на уровне БД (миграция `0009`): anon-ключ может
+читать только публичные колонки `stickers` — `session_id`, `likes_count`,
+`report_count`, `allow_feature` ему недоступны ни через REST, ни через
+Realtime. **Новая колонка в `stickers` по умолчанию закрыта для anon**; если
+она публичная, выдайте её отдельным `grant select (колонка) on stickers to
+anon, authenticated;`. Из-за этого Realtime больше не знает `is_own` —
+`WallCanvas` берёт его из уже загруженного состояния, а автор видит
+«🫂 тебя услышали» после перезагрузки, а не мгновенно.
+
 Используйте `toPublicSticker()` в **любом** новом месте, откуда стикеры уходят
 в браузер — включая Supabase Realtime payload'ы (там строка приходит с
 "провода" целиком, сырую её сохранять в состоянии React нельзя).
 
 ## Модерация и защита (Фаза 2)
 
+- **Rate limit работает fail-closed**: если проверка лимита в БД упала,
+  публикация отклоняется с 503, а не пропускается.
 - **Порядок проверки** при создании стикера: длина -> rate limit (не больше
   8 постов на сессию в час) -> владение декорацией (если указана) -> словарь
   запрещённых слов -> OpenAI Moderation API. Дорогой вызов OpenAI — последним.
 - **Словарь слов** (`lib/wordFilter.ts`) — стартовый список, не исчерпывающий.
   Расширяйте его силами модераторов/носителей языка по мере необходимости.
-- **Жалобы**: кнопка 🚩 на каждом стикере. При 3 жалобах `report_sticker`
+- **Жалобы**: кнопка 🚩 на каждом стикере. Одна жалоба на сессию на стикер,
+  не больше 10 жалоб с сессии в час. При 3 жалобах от разных сессий `report_sticker`
   атомарно скрывает стикер — он пропадает из `SELECT` по RLS и попадает в
   очередь `/admin`.
 - **Известное ограничение**: если сторонний посетитель уже открыл стену и

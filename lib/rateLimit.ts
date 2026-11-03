@@ -18,8 +18,10 @@ export async function isRateLimited(
     .gt("created_at", oneHourAgo);
 
   if (error) {
-    console.error("Rate limit check failed", error);
-    return false; // не блокируем публикацию из-за сбоя проверки
+    // Fail closed: если проверить лимит не удалось, публикацию не пропускаем —
+    // иначе любой сбой БД (или его провокация) отключал бы защиту от спама.
+    // Вызывающий роут превращает это в 503.
+    throw new Error(`Rate limit check failed: ${error.message}`);
   }
 
   return (count ?? 0) >= POSTS_PER_HOUR_LIMIT;

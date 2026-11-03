@@ -171,9 +171,11 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "stickers" },
         (payload) => {
-          // payload.new — сырая строка из БД (с session_id и реальным
-          // likes_count). toPublicSticker сразу же их отбрасывает — в
-          // состояние React попадает только санитизированная версия.
+          // payload.new содержит только публичные колонки: session_id/
+          // likes_count закрыты для anon на уровне БД (миграция 0009), так что
+          // is_own здесь всегда false. Свой стикер приходит раньше или позже
+          // через handleCreated (ответ POST /api/stickers) и перезаписывает
+          // эту версию правильной, с is_own = true.
           const incoming = toPublicSticker(payload.new as Sticker, mySessionIdRef.current);
           setStickers((prev) => {
             if (prev.has(incoming.id)) return prev;
@@ -193,6 +195,10 @@ export function WallCanvas({ initialStickers }: WallCanvasProps) {
             const next = new Map(prev);
             next.set(incoming.id, {
               ...incoming,
+              // Владение и факт реакций Realtime не передаёт (приватные
+              // колонки, см. выше) — берём то, что уже знали с сервера.
+              is_own: existing?.is_own ?? false,
+              has_reactions: existing?.has_reactions ?? false,
               liked_by_me: existing?.liked_by_me ?? false,
             });
             return next;

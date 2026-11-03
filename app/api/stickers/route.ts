@@ -57,7 +57,17 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient();
 
-  if (await isRateLimited(supabase, sessionId)) {
+  let rateLimited: boolean;
+  try {
+    rateLimited = await isRateLimited(supabase, sessionId);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      { error: "Сервис временно недоступен, попробуйте через минуту." },
+      { status: 503 }
+    );
+  }
+  if (rateLimited) {
     return NextResponse.json(
       {
         error: `Слишком много сообщений подряд — не больше ${POSTS_PER_HOUR_LIMIT} в час. Попробуйте позже.`,

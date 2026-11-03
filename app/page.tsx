@@ -1,5 +1,4 @@
 import { cookies } from "next/headers";
-import { createPublicClient } from "@/lib/supabase/public";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SESSION_COOKIE } from "@/lib/session";
 import { WallCanvas } from "@/components/WallCanvas";
@@ -9,13 +8,20 @@ import type { Sticker, StickerWithLikedState } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const supabase = createPublicClient();
+  // Service role, а не anon: anon больше не может читать session_id/
+  // likes_count (миграция 0009), а они нужны здесь, чтобы посчитать is_own и
+  // has_reactions. Service role обходит RLS, поэтому фильтр видимости
+  // (не скрыт, не истёк) — явно в запросе. В браузер уходит только
+  // toPublicSticker(), как и раньше.
+  const supabase = createAdminClient();
   const cookieStore = await cookies();
   const sessionId = cookieStore.get(SESSION_COOKIE)?.value ?? null;
 
   const { data: stickers, error } = await supabase
     .from("stickers")
     .select("*")
+    .eq("is_hidden", false)
+    .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: true })
     .limit(500);
 
@@ -28,8 +34,7 @@ export default async function Home() {
   // role. Это Server Component, в браузер он не попадает.
   let likedIds = new Set<string>();
   if (sessionId && stickers && stickers.length > 0) {
-    const admin = createAdminClient();
-    const { data: reactions } = await admin
+    const { data: reactions } = await supabase
       .from("reactions")
       .select("sticker_id")
       .eq("session_id", sessionId)

@@ -16,11 +16,30 @@ function isAuthorizedAdmin(request: NextRequest): boolean {
   const header = request.headers.get("authorization");
   if (!header?.startsWith("Basic ")) return false;
 
-  const decoded = atob(header.slice("Basic ".length));
+  let decoded: string;
+  try {
+    decoded = atob(header.slice("Basic ".length));
+  } catch {
+    return false; // битый base64 — раньше это роняло proxy с 500
+  }
   const separatorIndex = decoded.indexOf(":");
   const providedPassword = separatorIndex === -1 ? decoded : decoded.slice(separatorIndex + 1);
 
-  return providedPassword === password;
+  return constantTimeEqual(providedPassword, password);
+}
+
+// Сравнение за постоянное время: обычный === останавливается на первом
+// несовпавшем символе, и по времени ответа пароль теоретически можно
+// подбирать посимвольно. Без node:crypto, чтобы работало в любом рантайме.
+function constantTimeEqual(a: string, b: string): boolean {
+  const encoder = new TextEncoder();
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+  let diff = aBytes.length ^ bBytes.length;
+  for (let i = 0; i < bBytes.length; i++) {
+    diff |= (aBytes[i % Math.max(aBytes.length, 1)] ?? 0) ^ bBytes[i];
+  }
+  return diff === 0;
 }
 
 function requireAdminAuth(): NextResponse {
